@@ -142,6 +142,7 @@ async def chat_with_donald(
         }
     """
     if not client:
+        logger.warning("Donald: no client (API key missing or placeholder)")
         return _fallback(user_message)
 
     ctx = _build_user_context(cv_data, stats, prefs)
@@ -166,8 +167,10 @@ async def chat_with_donald(
         return {"message": message, "action": action, "action_arg": action_arg}
 
     except Exception as exc:
-        logger.warning("Donald chat failed: %s", exc)
-        return _fallback(user_message)
+        logger.error("Donald chat failed: %s — %s", type(exc).__name__, exc)
+        fb = _fallback(user_message)
+        fb["_debug_error"] = f"{type(exc).__name__}: {exc}"
+        return fb
 
 
 def _fallback(user_message: str) -> dict[str, Any]:
