@@ -1031,13 +1031,10 @@ async function boot(){
     localStorage.setItem('jm_last_visit', String(Date.now()));
 
     if(elapsed > 4 * 60 * 60 * 1000){
-      // First visit today (or new session) — show digest
-      try {
-        const digest = await api('/api/digest');
-      } catch(e) {
-        await addBotBubble(`👋 Welcome back! Your streak is **${res.streak} days**.\n\nWhat would you like to do?`);
-        showMainMenu();
-      }
+      // First visit today (or new session) — show greeting + motivation
+      await addBotBubble(`👋 Welcome back! Your streak is **${res.streak} days**.\n\nWhat would you like to do?`);
+      showMainMenu();
+      showDailyMotivation(); // fire-and-forget
     } else {
       await addBotBubble(`👋 Welcome back! Your streak is **${res.streak} days**.\n\nWhat would you like to do?`);
       showMainMenu();
@@ -2034,8 +2031,22 @@ function buildTailorCard(res){
   const simBtn = document.createElement('button');
   simBtn.className = 'prep-btn';
   simBtn.textContent = '🎙️ Mock Interview';
-  simBtn.onclick = () => startInterviewSim(res._jobId || '', simBtn);
+  simBtn.onclick = () => showInterviewTypeSelector(res._jobId || '', simBtn);
   actions.appendChild(simBtn);
+
+  const clBtn = document.createElement('button');
+  clBtn.className = 'prep-btn';
+  clBtn.textContent = '📝 Cover Letter';
+  clBtn.onclick = () => showCoverLetter(res._jobId || '', clBtn);
+  actions.appendChild(clBtn);
+
+  if(res.job?.company){
+    const revBtn = document.createElement('button');
+    revBtn.className = 'prep-btn';
+    revBtn.textContent = '🏢 Company Info';
+    revBtn.onclick = () => showCompanyReviews(res.job.company, res._jobId);
+    actions.appendChild(revBtn);
+  }
 
   card.appendChild(actions);
 
@@ -2373,11 +2384,13 @@ async function doJobSearch(){
 // ─────────────────────────────────────────────────────────────────────────────
 let currentSim = null; // {sim_id, questions, job, currentIndex}
 
-async function startInterviewSim(jobId, btn){
+async function startInterviewSim(jobId, btn, interviewType){
   if(!jobId){ await addBotBubble('❌ Cannot identify job.'); return; }
   if(btn){ btn.disabled=true; btn.textContent='⏳ Preparing...'; }
   try {
-    const res = await api('/api/interview/simulate/start','POST',{job_id:Number(jobId)});
+    const body = {job_id:Number(jobId)};
+    if(interviewType) body.interview_type = interviewType;
+    const res = await api('/api/interview/simulate/start','POST', body);
     if(btn){ btn.disabled=false; btn.textContent='🎙️ Mock Interview'; }
 
     currentSim = {
@@ -3320,6 +3333,233 @@ async function handleSend(){
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Interview type selector
+// ─────────────────────────────────────────────────────────────────────────────
+function showInterviewTypeSelector(jobId, triggerBtn){
+  const types = [
+    {key:'phone',   icon:'📞', label:'Phone Screen',    desc:'5 quick questions — communication focus'},
+    {key:'video',   icon:'📹', label:'Video Interview',  desc:'5 structured questions — presentation focus'},
+    {key:'task',    icon:'💻', label:'Technical/Task',    desc:'4 problem-solving scenarios'},
+    {key:'frontal', icon:'🤝', label:'In-Person',        desc:'5 behavioral depth questions'},
+  ];
+  const wrap=document.createElement('div');
+  wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
+  const card=document.createElement('div');
+  card.className='digest-card';
+  card.innerHTML=`<div class="digest-title">🎙️ Choose Interview Format</div>`;
+  const grid=document.createElement('div');
+  grid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px';
+  types.forEach(t=>{
+    const btn=document.createElement('button');
+    btn.className='prep-btn';
+    btn.style.cssText='display:flex;flex-direction:column;align-items:center;padding:10px 8px;font-size:12px;gap:2px';
+    btn.innerHTML=`<span style="font-size:20px">${t.icon}</span><strong>${t.label}</strong><span style="font-size:10px;color:var(--text-muted)">${t.desc}</span>`;
+    btn.onclick=()=>{ wrap.remove(); startInterviewSim(jobId, null, t.key); };
+    grid.appendChild(btn);
+  });
+  card.appendChild(grid);
+  wrap.appendChild(card);
+  addBotRow(wrap, false);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cover letter
+// ─────────────────────────────────────────────────────────────────────────────
+async function showCoverLetter(jobId, btn){
+  if(!jobId){ await addBotBubble('❌ Pick a job first.'); return; }
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Writing…'; }
+  try {
+    const res = await api('/api/cover-letter/generate','POST',{job_id:Number(jobId)});
+    if(btn){ btn.disabled=false; btn.textContent='📝 Cover Letter'; }
+
+    const wrap=document.createElement('div');
+    wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
+    const card=document.createElement('div');
+    card.className='digest-card';
+    card.innerHTML=`<div class="digest-title">📝 Cover Letter</div>`;
+
+    // Letter text
+    const body=document.createElement('div');
+    body.style.cssText='font-size:12px;color:var(--text-dim);line-height:1.6;white-space:pre-wrap;margin:8px 0';
+    body.textContent=res.cover_letter||'';
+    card.appendChild(body);
+
+    // Key points
+    if(res.key_points?.length){
+      const kp=document.createElement('div');
+      kp.style.cssText='margin-top:8px';
+      kp.innerHTML='<div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px">Key selling points:</div>';
+      res.key_points.forEach(p=>{
+        const li=document.createElement('div');
+        li.style.cssText='font-size:11px;color:var(--text-muted);padding-left:8px';
+        li.textContent='• '+p;
+        kp.appendChild(li);
+      });
+      card.appendChild(kp);
+    }
+
+    // Download button
+    const dlBtn=document.createElement('button');
+    dlBtn.className='job-apply';
+    dlBtn.style.cssText='font-size:12px;margin-top:10px';
+    dlBtn.textContent='📥 Download DOCX';
+    dlBtn.onclick=async()=>{
+      try {
+        const hdrs={};
+        if(authToken) hdrs['Authorization']=`Bearer ${authToken}`;
+        const r=await fetch(`/api/cover-letter/export?job_id=${jobId}`,{headers:hdrs});
+        if(!r.ok) throw new Error('Export failed');
+        const blob=await r.blob();
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement('a');
+        a.href=url;
+        a.download=r.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g,'')||'Cover_Letter.docx';
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch(e){ await addBotBubble('❌ Cover letter export failed.'); }
+    };
+    card.appendChild(dlBtn);
+
+    wrap.appendChild(card);
+    addBotRow(wrap, true);
+  } catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='📝 Cover Letter'; }
+    await addBotBubble('❌ Cover letter generation failed. Try again.');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Company reviews
+// ─────────────────────────────────────────────────────────────────────────────
+async function showCompanyReviews(company, jobId){
+  if(!company){ await addBotBubble('❌ No company name provided.'); return; }
+  addTyping();
+  try {
+    const body = {company_name: company};
+    if(jobId) body.job_id = Number(jobId);
+    const res = await api('/api/company/reviews','POST', body);
+    removeTyping();
+
+    const wrap=document.createElement('div');
+    wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
+    const card=document.createElement('div');
+    card.className='digest-card';
+
+    // Header with rating
+    let ratingHtml = '';
+    if(res.rating){
+      const stars = '★'.repeat(Math.round(res.rating)) + '☆'.repeat(5-Math.round(res.rating));
+      ratingHtml = `<span style="color:var(--accent);margin-left:8px">${stars} ${res.rating}</span>`;
+    }
+    card.innerHTML=`<div class="digest-title">🏢 ${res.company||company} ${ratingHtml}</div>`;
+
+    // Pros
+    if(res.pros?.length){
+      const sec=document.createElement('div');
+      sec.innerHTML='<div style="font-size:11px;font-weight:600;color:#22c55e;margin:8px 0 4px">👍 Pros</div>';
+      res.pros.forEach(p=>{
+        const li=document.createElement('div');
+        li.style.cssText='font-size:11px;color:var(--text-dim);padding-left:8px';
+        li.textContent='• '+p;
+        sec.appendChild(li);
+      });
+      card.appendChild(sec);
+    }
+
+    // Cons
+    if(res.cons?.length){
+      const sec=document.createElement('div');
+      sec.innerHTML='<div style="font-size:11px;font-weight:600;color:#ef4444;margin:8px 0 4px">👎 Cons</div>';
+      res.cons.forEach(p=>{
+        const li=document.createElement('div');
+        li.style.cssText='font-size:11px;color:var(--text-dim);padding-left:8px';
+        li.textContent='• '+p;
+        sec.appendChild(li);
+      });
+      card.appendChild(sec);
+    }
+
+    // Culture & WLB
+    if(res.culture){
+      const c=document.createElement('div');
+      c.style.cssText='font-size:11px;color:var(--text-dim);margin-top:8px';
+      c.innerHTML=`<strong style="color:var(--text)">🎭 Culture:</strong> ${res.culture}`;
+      card.appendChild(c);
+    }
+    if(res.work_life_balance){
+      const w=document.createElement('div');
+      w.style.cssText='font-size:11px;color:var(--text-dim);margin-top:4px';
+      w.innerHTML=`<strong style="color:var(--text)">⚖️ Work-Life:</strong> ${res.work_life_balance}`;
+      card.appendChild(w);
+    }
+
+    // Interview process
+    if(res.interview_process){
+      const ip=document.createElement('div');
+      ip.style.cssText='font-size:11px;color:var(--text-dim);margin-top:4px';
+      ip.innerHTML=`<strong style="color:var(--text)">🎤 Interview:</strong> ${res.interview_process}`;
+      card.appendChild(ip);
+    }
+
+    // Salary
+    if(res.salary_range_estimate){
+      const s=document.createElement('div');
+      s.style.cssText='font-size:11px;color:var(--text-dim);margin-top:4px';
+      s.innerHTML=`<strong style="color:var(--text)">💰 Salary:</strong> ${res.salary_range_estimate}`;
+      card.appendChild(s);
+    }
+
+    // Disclaimer
+    const disc=document.createElement('div');
+    disc.style.cssText='font-size:9px;color:var(--text-muted);margin-top:10px;font-style:italic';
+    disc.textContent='Based on publicly available info. Verify on Glassdoor/Blind.';
+    card.appendChild(disc);
+
+    wrap.appendChild(card);
+    addBotRow(wrap, true);
+  } catch(e){
+    removeTyping();
+    await addBotBubble('❌ Could not load company reviews. Try again.');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Daily motivation
+// ─────────────────────────────────────────────────────────────────────────────
+async function showDailyMotivation(){
+  try {
+    const res = await api('/api/coach/motivation');
+    const wrap=document.createElement('div');
+    wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
+    const card=document.createElement('div');
+    card.className='digest-card';
+    card.innerHTML=`<div class="digest-title">✨ Daily Inspiration</div>`;
+
+    if(res.quote){
+      const q=document.createElement('div');
+      q.style.cssText='font-size:12px;color:var(--text);font-style:italic;margin:8px 0;line-height:1.5';
+      q.textContent=`"${res.quote}"`;
+      card.appendChild(q);
+    }
+    if(res.tip){
+      const t=document.createElement('div');
+      t.style.cssText='font-size:11px;color:var(--text-dim);margin:6px 0';
+      t.innerHTML=`💡 <strong>Tip:</strong> ${res.tip}`;
+      card.appendChild(t);
+    }
+    if(res.video_url){
+      const v=document.createElement('div');
+      v.style.cssText='margin-top:8px';
+      v.innerHTML=`<a href="${res.video_url}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none">🎬 ${res.video_title||'Watch: Career Inspiration'}</a>`;
+      card.appendChild(v);
+    }
+
+    wrap.appendChild(card);
+    addBotRow(wrap, false);
+  } catch(e){ /* silently skip motivation if fails */ }
+}
+
 async function executeDonaldAction(action, arg){
   const actions = {
     improve_cv:    ()=> showCVImprovement(),
@@ -3331,6 +3571,10 @@ async function executeDonaldAction(action, arg){
     coach:         ()=> showCoach(),
     email_templates:()=> showEmailTemplates(),
     interview_prep:()=> showCalendarAdvice(),
+    interview_sim: ()=> { if(arg){ const parts=arg.split(':'); showInterviewTypeSelector(parts[0]); } },
+    cover_letter:  ()=> { if(arg) showCoverLetter(arg); },
+    company_reviews:()=> { if(arg) showCompanyReviews(arg); },
+    motivation:    ()=> showDailyMotivation(),
     headhunters:   ()=> showHeadhunters(),
     calendar:      ()=> showCalendarAdvice(),
     refresh_jobs:  ()=> refreshJobs(),

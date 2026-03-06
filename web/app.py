@@ -42,7 +42,7 @@ from db.models import (
     ActivityLog, Application, CV, InterviewSession, Job,
     Notification, User, UserPreferences,
 )
-from services.coach import get_coaching_message
+from services.coach import get_coaching_message, get_daily_motivation
 from services.company_research import research_company
 from services.cv_export import generate_tailored_cv_docx, generate_improved_cv_docx
 from services.cv_improver import generate_cv_improvement
@@ -57,6 +57,8 @@ from services.job_scraper import scrape_and_store, get_total_job_count
 from services.linkedin_optimizer import generate_linkedin_optimization
 from services.email_templates import generate_email_templates
 from services.calendar_manager import generate_calendar_advice
+from services.company_reviews import get_company_reviews
+from services.cover_letter import generate_cover_letter, generate_cover_letter_docx
 from services.donald import chat_with_donald
 from web.auth import create_token, get_current_user
 
@@ -276,6 +278,7 @@ class UpdateStatusBody(BaseModel):
 
 class SimStartBody(BaseModel):
     job_id: int
+    interview_type: str = "frontal"
 
 
 class SimAnswerBody(BaseModel):
@@ -319,6 +322,15 @@ class ExportImprovedBody(BaseModel):
 class ChatBody(BaseModel):
     message: str
     history: list[dict] = []
+
+
+class CoverLetterBody(BaseModel):
+    job_id: int
+
+
+class CompanyReviewBody(BaseModel):
+    company_name: str
+    job_id: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -1092,12 +1104,13 @@ async def start_interview_sim(
 
     job_dict = _resolve_job(db_job, body.job_id)
     company_context = await research_company(job_dict.get("company", ""), job_dict)
-    sim_result = await start_simulation(cv_data, job_dict, company_context)
+    sim_result = await start_simulation(cv_data, job_dict, company_context, body.interview_type)
 
     async with AsyncSessionLocal() as db:
         session = InterviewSession(
             user_id=user.id,
             job_id=body.job_id,
+            interview_type=body.interview_type,
             questions=sim_result["questions"],
             answers=[],
         )
@@ -1147,13 +1160,14 @@ async def submit_sim_answer(
         db_job = job_res.scalar_one_or_none()
 
     job_dict = _resolve_job(db_job, sim.job_id)
+    interview_type = sim.interview_type or "frontal"
 
     questions = sim.questions or []
     if body.question_index < 0 or body.question_index >= len(questions):
         raise HTTPException(status_code=422, detail="Invalid question index")
 
     question = questions[body.question_index]
-    feedback = await evaluate_answer(cv_data, job_dict, question, body.answer)
+    feedback = await evaluate_answer(cv_data, job_dict, question, body.answer, interview_type)
 
     async with AsyncSessionLocal() as db:
         sim_res = await db.execute(
@@ -1377,6 +1391,110 @@ async def calendar_advice(
         calendar_url=calendar_url,
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Routes — cover letter
+# ---------------------------------------------------------------------------
+
+@app.post("/api/cover-letter/generate")
+@limiter.limit("10/minute")
+async def cover_letter_generate(
+    body: CoverLetterBody,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    async with AsyncSessionLocal() as db:
+        cv_res = await db.execute(
+            select(CV).where(CV.user_id == user.id, CV.is_active == True)
+        )
+        cv = cv_res.scalar_one_or_none()
+        cv_data: dict = cv.parsed_data if cv and cv.parsed_data else {}
+
+        job_res = await db.execute(select(Job).where(Job.id == body.job_id))
+        db_job = job_res.scalar_one_or_none()
+
+    job_dict = _resolve_job(db_job, body.job_id)
+    result = await generate_cover_letter(cv_data, job_dict)
+    return result
+
+
+@app.get("/api/cover-letter/export")
+@limiter.limit("10/minute")
+async def cover_letter_export(
+    job_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    async with AsyncSessionLocal() as db:
+        cv_res = await db.execute(
+            select(CV).where(CV.user_id == user.id, CV.is_active == True)
+        )
+        cv = cv_res.scalar_one_or_none()
+        cv_data: dict = cv.parsed_data if cv and cv.parsed_data else {}
+
+        job_res = await db.execute(select(Job).where(Job.id == job_id))
+        db_job = job_res.scalar_one_or_none()
+
+    job_dict = _resolve_job(db_job, job_id)
+    cl_data = await generate_cover_letter(cv_data, job_dict)
+    docx_bytes = generate_cover_letter_docx(cv_data, job_dict, cl_data)
+
+    company = job_dict.get("company", "company").replace(" ", "_")
+    filename = f"Cover_Letter_{company}.docx"
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Routes — company reviews
+# ---------------------------------------------------------------------------
+
+@app.post("/api/company/reviews")
+@limiter.limit("10/minute")
+async def company_reviews(
+    body: CompanyReviewBody,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    job_data = None
+    if body.job_id:
+        async with AsyncSessionLocal() as db:
+            job_res = await db.execute(select(Job).where(Job.id == body.job_id))
+            db_job = job_res.scalar_one_or_none()
+        if db_job:
+            job_data = {
+                "title": db_job.title, "company": db_job.company,
+                "location": db_job.location, "description": db_job.description,
+            }
+    result = await get_company_reviews(body.company_name, job_data)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Routes — daily motivation
+# ---------------------------------------------------------------------------
+
+@app.get("/api/coach/motivation")
+@limiter.limit("10/minute")
+async def daily_motivation(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    async with AsyncSessionLocal() as db:
+        apps = (await db.execute(
+            select(Application).where(Application.user_id == user.id)
+        )).scalars().all()
+
+    total = len(apps)
+    user_stats = {
+        "total_apps": total,
+        "streak": user.streak_days or 0,
+    }
+    return get_daily_motivation(user_stats)
 
 
 # ---------------------------------------------------------------------------

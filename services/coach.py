@@ -192,3 +192,111 @@ def _fallback_coaching(
         "affirmation": affirmation,
         "mood": mood,
     }
+
+
+# ---------------------------------------------------------------------------
+# Daily motivation — curated tips, quotes, and videos
+# ---------------------------------------------------------------------------
+
+MOTIVATION_VIDEOS = [
+    {"url": "https://www.youtube.com/watch?v=Ks-_Mh1QhMc", "title": "The Power of Believing You Can Improve — Carol Dweck"},
+    {"url": "https://www.youtube.com/watch?v=hER0Qp6QJNU", "title": "The Secret to Getting a Job — Mark Leruste"},
+    {"url": "https://www.youtube.com/watch?v=PYj8Iq3FwuE", "title": "How to Find a Job You Love — Scott Dinsmore"},
+    {"url": "https://www.youtube.com/watch?v=u4ZoJKF_VuA", "title": "Stop Searching for Your Passion — Terri Trespicio"},
+    {"url": "https://www.youtube.com/watch?v=iCvmsMzlF7o", "title": "The Surprising Habits of Original Thinkers — Adam Grant"},
+    {"url": "https://www.youtube.com/watch?v=H14bBuluwB8", "title": "Grit: The Power of Passion and Perseverance — Angela Duckworth"},
+    {"url": "https://www.youtube.com/watch?v=sF6pkBMnS-E", "title": "What Makes a Great Leader — Roselinde Torres"},
+    {"url": "https://www.youtube.com/watch?v=RyTQ5-SQYTo", "title": "How to Speak So That People Want to Listen — Julian Treasure"},
+    {"url": "https://www.youtube.com/watch?v=arj7oStGLkU", "title": "How Great Leaders Inspire Action — Simon Sinek"},
+    {"url": "https://www.youtube.com/watch?v=pN34FNbOKXc", "title": "How to Get Your Brain to Focus — Chris Bailey"},
+    {"url": "https://www.youtube.com/watch?v=eIho2S0ZahI", "title": "How to Build Your Creative Confidence — David Kelley"},
+    {"url": "https://www.youtube.com/watch?v=w-HYZv6HzAs", "title": "The Happy Secret to Better Work — Shawn Achor"},
+    {"url": "https://www.youtube.com/watch?v=Lp7E973zozc", "title": "The Skill of Self Confidence — Dr. Ivan Joseph"},
+    {"url": "https://www.youtube.com/watch?v=xO7vp7aGxcM", "title": "Why You Will Fail to Have a Great Career — Larry Smith"},
+    {"url": "https://www.youtube.com/watch?v=8KkKuTCFvzI", "title": "10 Ways to Have a Better Conversation — Celeste Headlee"},
+    {"url": "https://www.youtube.com/watch?v=vKhGnFkiGCk", "title": "Why the Best Hire Might Not Have the Perfect Resume — Regina Hartley"},
+    {"url": "https://www.youtube.com/watch?v=TWlxMDLq0Uw", "title": "The Power of Vulnerability — Brene Brown"},
+    {"url": "https://www.youtube.com/watch?v=zLYECIjmnQs", "title": "Why We Do What We Do — Tony Robbins"},
+    {"url": "https://www.youtube.com/watch?v=UF8uR6Z6KLc", "title": "The Power of Introverts — Susan Cain"},
+    {"url": "https://www.youtube.com/watch?v=5MgBikgcWnY", "title": "Try Something New for 30 Days — Matt Cutts"},
+]
+
+TIPS_BY_STAGE = {
+    "early": [
+        "Focus on quality over quantity in your first applications",
+        "Set up job alerts on LinkedIn and Indeed for your target roles",
+        "Ask a friend to review your CV before sending it out",
+        "Tailor each application — generic CVs get filtered out",
+        "Update your LinkedIn headline to signal you're open to opportunities",
+        "Research 3 companies you'd love to work for and follow them",
+        "Practice your elevator pitch in front of a mirror",
+    ],
+    "active": [
+        "Follow up on applications after 1 week with a brief email",
+        "Schedule informational interviews to expand your network",
+        "Keep a spreadsheet of applications, contacts, and follow-ups",
+        "Prepare a list of questions to ask interviewers",
+        "Join industry Slack communities or Discord servers",
+        "Post an update on LinkedIn about what you're looking for",
+        "Set a daily routine: apply in the morning, network in the afternoon",
+    ],
+    "intensive": [
+        "Take breaks to avoid burnout — your wellbeing matters",
+        "Review and refine your approach based on response patterns",
+        "Ask for feedback from recruiters who passed on you",
+        "Consider broadening your search to adjacent roles",
+        "Practice mock interviews with a friend or online tool",
+        "Celebrate small wins — every interview is progress",
+        "Remember: most job searches take 3-6 months. You're doing fine.",
+    ],
+}
+
+QUOTES = [
+    "The only way to do great work is to love what you do. — Steve Jobs",
+    "Success is not final, failure is not fatal. It is the courage to continue that counts. — Winston Churchill",
+    "Your time is limited, don't waste it living someone else's life. — Steve Jobs",
+    "The future belongs to those who believe in the beauty of their dreams. — Eleanor Roosevelt",
+    "It does not matter how slowly you go as long as you do not stop. — Confucius",
+    "Believe you can and you're halfway there. — Theodore Roosevelt",
+    "Every expert was once a beginner. — Helen Hayes",
+    "The best time to plant a tree was 20 years ago. The second best time is now. — Chinese Proverb",
+    "Don't watch the clock; do what it does. Keep going. — Sam Levenson",
+    "Opportunities don't happen. You create them. — Chris Grosser",
+    "The secret of getting ahead is getting started. — Mark Twain",
+    "I have not failed. I've just found 10,000 ways that won't work. — Thomas Edison",
+    "What lies behind us and what lies before us are tiny matters compared to what lies within us. — Ralph Waldo Emerson",
+    "Hard work beats talent when talent doesn't work hard. — Tim Notke",
+    "The only impossible journey is the one you never begin. — Tony Robbins",
+    "You miss 100% of the shots you don't take. — Wayne Gretzky",
+    "Courage is not the absence of fear, but the triumph over it. — Nelson Mandela",
+    "Everything you've ever wanted is on the other side of fear. — George Addair",
+    "The best revenge is massive success. — Frank Sinatra",
+    "Act as if what you do makes a difference. It does. — William James",
+]
+
+
+def get_daily_motivation(user_stats: dict[str, Any]) -> dict[str, Any]:
+    """Return a daily motivation package: tip, quote, and video link."""
+    from datetime import datetime
+    day = datetime.utcnow().timetuple().tm_yday
+
+    total_apps = user_stats.get("total_apps", 0)
+    if total_apps <= 5:
+        stage = "early"
+    elif total_apps <= 20:
+        stage = "active"
+    else:
+        stage = "intensive"
+
+    tips = TIPS_BY_STAGE[stage]
+    tip = tips[day % len(tips)]
+    video = MOTIVATION_VIDEOS[day % len(MOTIVATION_VIDEOS)]
+    quote = QUOTES[(day + 7) % len(QUOTES)]
+
+    return {
+        "tip": tip,
+        "quote": quote,
+        "video_url": video["url"],
+        "video_title": video["title"],
+        "stage": stage,
+    }

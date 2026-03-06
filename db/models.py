@@ -145,6 +145,7 @@ class InterviewSession(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False)
+    interview_type = Column(String, default="frontal")
     questions = Column(JSON, nullable=True)   # list of question dicts
     answers = Column(JSON, default=list)      # list of {answer, feedback} dicts
     overall_score = Column(Integer, nullable=True)

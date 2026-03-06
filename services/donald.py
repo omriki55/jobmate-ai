@@ -57,9 +57,13 @@ If the conversation is just chatting / emotional support, do NOT include a tag.
 [ACTION:coach] — deep emotional coaching session
 [ACTION:email_templates] — generate email templates
 [ACTION:interview_prep] — interview preparation tips
+[ACTION:interview_sim:<job_id>:<type>] — start mock interview simulation (type = phone|video|task|frontal)
+[ACTION:cover_letter:<job_id>] — generate a personalized cover letter for a job
+[ACTION:company_reviews:<company_name>] — get company reviews & insights (Glassdoor-style)
 [ACTION:headhunters] — find recruiters in their field
 [ACTION:calendar] — scheduling & interview prep calendar
 [ACTION:refresh_jobs] — scrape fresh job listings
+[ACTION:motivation] — daily motivation (tip, quote, video)
 
 ## Rules
 - Always respond in the SAME LANGUAGE the user writes in.
@@ -195,6 +199,30 @@ def _fallback(user_message: str) -> dict[str, Any]:
         return {
             "message": "Here are your top job matches:",
             "action": "matches",
+            "action_arg": None,
+        }
+    if any(w in low for w in ("cover letter", "מכתב", "letter")):
+        return {
+            "message": "I'd be happy to help you write a cover letter! Pick a job and I'll craft one for you.",
+            "action": "cover_letter",
+            "action_arg": None,
+        }
+    if any(w in low for w in ("company review", "glassdoor", "review", "culture")):
+        return {
+            "message": "Let me look up company insights for you!",
+            "action": "company_reviews",
+            "action_arg": None,
+        }
+    if any(w in low for w in ("interview", "practice", "simulate", "mock")):
+        return {
+            "message": "Let's prepare for your interview! Choose a format and we'll practice together.",
+            "action": "interview_prep",
+            "action_arg": None,
+        }
+    if any(w in low for w in ("motivat", "inspire", "quote", "tip")):
+        return {
+            "message": "Here's some inspiration to keep you going!",
+            "action": "motivation",
             "action_arg": None,
         }
     return {
