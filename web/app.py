@@ -380,54 +380,66 @@ async def chat_endpoint(
     user: User = Depends(get_current_user),
 ):
     """Conversational chat with Donald — the AI career advisor."""
-    async with AsyncSessionLocal() as db:
-        # Load CV
-        cv_res = await db.execute(
-            select(CV).where(CV.user_id == user.id, CV.is_active == True)
-        )
-        cv = cv_res.scalar_one_or_none()
-        cv_data = cv.parsed_data if cv and cv.parsed_data else None
+    cv_data = None
+    prefs = None
+    stats = {"total_apps": 0, "response_rate": 0, "interviews": 0,
+             "rejections": 0, "streak": user.streak_days or 0}
 
-        # Load preferences
-        pref_res = await db.execute(
-            select(UserPreferences).where(UserPreferences.user_id == user.id)
-        )
-        prefs_row = pref_res.scalar_one_or_none()
-        prefs = None
-        if prefs_row:
-            prefs = {
-                "target_roles": prefs_row.target_roles or [],
-                "locations": prefs_row.locations or [],
-            }
-
-        # Load stats
-        from sqlalchemy import func as sa_func
-        app_res = await db.execute(
-            select(
-                sa_func.count(Application.id),
-                sa_func.count(Application.id).filter(Application.status == "interview"),
-                sa_func.count(Application.id).filter(Application.status == "rejected"),
-            ).where(Application.user_id == user.id)
-        )
-        row = app_res.one()
-        total_apps = row[0] or 0
-        interviews = row[1] or 0
-        rejections = row[2] or 0
-        resp_count_res = await db.execute(
-            select(sa_func.count(Application.id)).where(
-                Application.user_id == user.id,
-                Application.status.notin_(["applied"]),
+    try:
+        async with AsyncSessionLocal() as db:
+            # Load CV
+            cv_res = await db.execute(
+                select(CV).where(CV.user_id == user.id, CV.is_active == True)
             )
-        )
-        responded = resp_count_res.scalar() or 0
+            cv = cv_res.scalar_one_or_none()
+            cv_data = cv.parsed_data if cv and cv.parsed_data else None
 
-    stats = {
-        "total_apps": total_apps,
-        "response_rate": round(responded / total_apps * 100) if total_apps else 0,
-        "interviews": interviews,
-        "rejections": rejections,
-        "streak": user.streak_days or 0,
-    }
+            # Load preferences
+            try:
+                pref_res = await db.execute(
+                    select(UserPreferences).where(UserPreferences.user_id == user.id)
+                )
+                prefs_row = pref_res.scalar_one_or_none()
+                if prefs_row:
+                    prefs = {
+                        "target_roles": prefs_row.target_roles or [],
+                        "locations": prefs_row.locations or [],
+                    }
+            except Exception:
+                logger.warning("Failed to load preferences for chat, continuing without")
+
+            # Load stats
+            try:
+                from sqlalchemy import func as sa_func
+                app_res = await db.execute(
+                    select(
+                        sa_func.count(Application.id),
+                        sa_func.count(Application.id).filter(Application.status == "interview"),
+                        sa_func.count(Application.id).filter(Application.status == "rejected"),
+                    ).where(Application.user_id == user.id)
+                )
+                row = app_res.one()
+                total_apps = row[0] or 0
+                interviews = row[1] or 0
+                rejections = row[2] or 0
+                resp_count_res = await db.execute(
+                    select(sa_func.count(Application.id)).where(
+                        Application.user_id == user.id,
+                        Application.status.notin_(["applied"]),
+                    )
+                )
+                responded = resp_count_res.scalar() or 0
+                stats = {
+                    "total_apps": total_apps,
+                    "response_rate": round(responded / total_apps * 100) if total_apps else 0,
+                    "interviews": interviews,
+                    "rejections": rejections,
+                    "streak": user.streak_days or 0,
+                }
+            except Exception:
+                logger.warning("Failed to load stats for chat, continuing without")
+    except Exception:
+        logger.warning("Failed to load user context for chat, continuing without")
 
     result = await chat_with_donald(
         user_message=body.message,
