@@ -1288,7 +1288,26 @@ async function autoScanLinkedIn(url){
     await addBotBubble('💼 Couldn\'t scan right now — no worries, you can try again from the menu anytime.');
   }
   await sleep(400);
-  await askLocation();
+  await offerImprovements();
+}
+
+async function offerImprovements(){
+  await addBotBubble('🚀 **What would you like to do next?**');
+  addButtons([
+    ['📄 Create Improved CV','cv'],
+    ['💼 Improve LinkedIn','linkedin'],
+    ['➡️ Continue to Job Search','skip'],
+  ], async (choice)=>{
+    if(choice==='cv'){
+      await showCVImprovement();
+    } else if(choice==='linkedin'){
+      await showLinkedInOptimize();
+      await sleep(400);
+      await askLocation();
+    } else {
+      await askLocation();
+    }
+  });
 }
 
 async function askLinkedInUrl(){
@@ -1340,11 +1359,11 @@ async function askLinkedInUrl(){
       await addBotBubble('💼 Couldn\'t scan right now — no worries, you can try again from the menu anytime.');
     }
     await sleep(400);
-    await askLocation();
+    await offerImprovements();
   };
   skipBtn.onclick=async()=>{
     addUserBubble('Skip');
-    await askLocation();
+    await offerImprovements();
   };
 }
 
