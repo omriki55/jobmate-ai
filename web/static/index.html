@@ -1016,7 +1016,7 @@ function setInputEnabled(enabled){
 // Onboarding flow
 // ─────────────────────────────────────────────────────────────────────────────
 async function boot(){
-  setInputEnabled(false);
+  setInputEnabled(true);
   loadJobCount();   // fire-and-forget — shows live job count in header
   const res = await api('/api/session/init','POST',{session_id:sessionId});
   authToken = res.token;
@@ -1586,7 +1586,6 @@ async function askRole(){
 async function handleRoleInput(text){
   prefs.target_roles = text.split(',').map(r=>r.trim()).filter(Boolean);
   addUserBubble(text);
-  setInputEnabled(false);
   await askLocation();
 }
 
@@ -1612,7 +1611,6 @@ async function askSalary(){
 
 async function handleSalaryInput(text){
   addUserBubble(text);
-  setInputEnabled(false);
   if(text.toLowerCase()==='skip'){
     prefs.min_salary=null; prefs.salary_currency='USD'; prefs.salary_display='Not specified';
   } else {
@@ -3290,11 +3288,11 @@ async function handleSend(){
   if(!text) return;
   $input.value='';
 
-  // Onboarding phases still use direct handlers
+  // Onboarding phases that need special input handling
   if(phase===PHASES.AWAITING_ROLE)  { await handleRoleInput(text);   return; }
   if(phase===PHASES.AWAITING_SALARY){ await handleSalaryInput(text); return; }
 
-  // Everything else goes through Donald
+  // Everything else goes through Donald (works in ALL phases)
   addUserBubble(text);
   chatHistory.push({role:'user', content:text});
   addTyping();
