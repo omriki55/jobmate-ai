@@ -11,14 +11,17 @@ import json
 import logging
 from typing import Any
 
-from anthropic import AsyncAnthropic
-
 from config.settings import ANTHROPIC_API_KEY
 
 logger = logging.getLogger(__name__)
 
-_has_key = bool(ANTHROPIC_API_KEY) and not ANTHROPIC_API_KEY.startswith("your_")
-client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY) if _has_key else None
+
+def _get_client():
+    """Lazy client creation — avoids module-level import timing issues."""
+    if not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY.startswith("your_"):
+        return None
+    from anthropic import AsyncAnthropic
+    return AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 # ---------------------------------------------------------------------------
 # System prompt — Donald's personality + available actions
@@ -141,8 +144,10 @@ async def chat_with_donald(
             "action_arg": "optional arg" | None,
         }
     """
+    client = _get_client()
     if not client:
-        logger.warning("Donald: no client (API key missing or placeholder)")
+        logger.warning("Donald: no client (ANTHROPIC_API_KEY=%s)",
+                        repr(ANTHROPIC_API_KEY[:10]) if ANTHROPIC_API_KEY else "empty")
         return _fallback(user_message)
 
     ctx = _build_user_context(cv_data, stats, prefs)
