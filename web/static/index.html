@@ -658,6 +658,90 @@ header{
   display:inline-block;background:rgba(16,217,160,.1);color:var(--accent);
   padding:2px 7px;border-radius:20px;font-size:10px;margin-right:4px;margin-top:4px;
 }
+
+/* ── Email input (onboarding) ─────────────────────── */
+.email-input-wrap{display:flex;gap:6px;margin-top:8px;align-items:center}
+.email-input{
+  flex:1;background:var(--input-bg);border:1px solid var(--border);
+  border-radius:8px;padding:6px 10px;color:var(--text);
+  font-size:12px;outline:none;min-width:0;
+}
+.email-input:focus{border-color:var(--accent)}
+.email-input::placeholder{color:var(--text-muted)}
+.email-save{
+  background:var(--accent);color:#0a0f1e;border:none;
+  border-radius:8px;padding:6px 12px;font-size:11px;font-weight:600;
+  cursor:pointer;white-space:nowrap;
+}
+.email-save:hover{background:var(--accent-dim)}
+
+/* ── Calendar input (onboarding) ──────────────────── */
+.cal-input-wrap{display:flex;gap:6px;margin-top:8px;align-items:center}
+.cal-input{
+  flex:1;background:var(--input-bg);border:1px solid var(--border);
+  border-radius:8px;padding:6px 10px;color:var(--text);
+  font-size:12px;outline:none;min-width:0;
+}
+.cal-input:focus{border-color:var(--accent)}
+.cal-input::placeholder{color:var(--text-muted)}
+.cal-save{
+  background:var(--accent);color:#0a0f1e;border:none;
+  border-radius:8px;padding:6px 12px;font-size:11px;font-weight:600;
+  cursor:pointer;white-space:nowrap;
+}
+.cal-save:hover{background:var(--accent-dim)}
+
+/* ── Email templates card ─────────────────────────── */
+.email-card{
+  background:var(--surface2);border:1px solid #ea580c;
+  border-radius:14px;padding:14px;margin-top:6px;max-width:88%;
+}
+.email-header{
+  display:flex;align-items:center;gap:8px;
+  font-weight:600;font-size:13px;color:#ea580c;margin-bottom:12px;
+}
+.email-section{margin-bottom:14px}
+.email-section-title{
+  font-size:11px;font-weight:600;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;
+}
+.email-template-block{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px;margin-bottom:8px;
+  font-size:12px;color:var(--text);position:relative;
+}
+.email-subject{font-weight:600;color:#ea580c;margin-bottom:6px}
+.email-body{white-space:pre-wrap;line-height:1.55;max-height:180px;overflow-y:auto}
+.email-tip{font-size:11px;color:var(--text-muted);margin-top:4px;font-style:italic}
+
+/* ── Calendar advice card ─────────────────────────── */
+.cal-card{
+  background:var(--surface2);border:1px solid #7c3aed;
+  border-radius:14px;padding:14px;margin-top:6px;max-width:88%;
+}
+.cal-header{
+  display:flex;align-items:center;gap:8px;
+  font-weight:600;font-size:13px;color:#7c3aed;margin-bottom:12px;
+}
+.cal-section{margin-bottom:14px}
+.cal-section-title{
+  font-size:11px;font-weight:600;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;
+}
+.cal-block{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:8px 10px;margin-bottom:4px;
+  font-size:12px;color:var(--text);
+}
+.cal-block-title{font-weight:600;color:#7c3aed;margin-bottom:2px}
+.cal-block-desc{color:var(--text-dim);font-size:11px;margin-top:2px}
+.cal-day{
+  display:flex;gap:8px;padding:4px 0;font-size:12px;
+  border-bottom:1px solid var(--border);
+}
+.cal-day:last-child{border-bottom:none}
+.cal-day-name{font-weight:600;color:var(--text);min-width:80px}
+.cal-day-activity{color:var(--text-dim);flex:1}
 </style>
 </head>
 <body>
@@ -883,7 +967,7 @@ async function askConnections(){
         <div class="connection-title">${c.title}</div>
         <div class="connection-desc">${c.desc}</div>
       </div>
-      <span class="connection-badge badge-soon">${c.key==='linkedin'?'Connect':'Coming Soon'}</span>`;
+      <span class="connection-badge badge-soon">Connect</span>`;
 
     if(c.key==='linkedin'){
       card.onclick=(e)=>{
@@ -916,19 +1000,65 @@ async function askConnections(){
           if(ev.key==='Enter'){ev.preventDefault();saveBtn.click();}
         });
       };
-    } else {
-      card.onclick=()=>{
-        card.classList.toggle('selected');
+    } else if(c.key==='email'){
+      card.onclick=(e)=>{
+        e.stopPropagation();
+        if(card.querySelector('.email-input')) return;
         const badge=card.querySelector('.connection-badge');
-        if(card.classList.contains('selected')){
+        badge.style.display='none';
+        const inputWrap=document.createElement('div');
+        inputWrap.className='email-input-wrap';
+        inputWrap.innerHTML=`<input type="email" class="email-input" placeholder="your@email.com"/><button class="email-save">Save</button>`;
+        card.querySelector('.connection-info').appendChild(inputWrap);
+        card.classList.add('selected');
+        const input=inputWrap.querySelector('.email-input');
+        const saveBtn=inputWrap.querySelector('.email-save');
+        input.focus();
+        input.onclick=(ev)=>ev.stopPropagation();
+        saveBtn.onclick=(ev)=>{
+          ev.stopPropagation();
+          const email=input.value.trim();
+          if(!email||!email.includes('@')){input.style.borderColor='var(--danger)';return;}
+          prefs.email_address=email;
+          inputWrap.remove();
+          badge.style.display='';
           badge.className='connection-badge badge-connected';
-          badge.textContent='✓ Queued';
-          prefs.connections[c.key]=true;
-        } else {
-          badge.className='connection-badge badge-soon';
-          badge.textContent='Coming Soon';
-          delete prefs.connections[c.key];
-        }
+          badge.textContent='✓ Connected';
+        };
+        input.addEventListener('keydown',(ev)=>{
+          if(ev.key==='Enter'){ev.preventDefault();saveBtn.click();}
+        });
+      };
+    } else if(c.key==='calendar'){
+      card.onclick=(e)=>{
+        e.stopPropagation();
+        if(card.querySelector('.cal-input')) return;
+        const badge=card.querySelector('.connection-badge');
+        badge.style.display='none';
+        const inputWrap=document.createElement('div');
+        inputWrap.className='cal-input-wrap';
+        inputWrap.innerHTML=`<input type="text" class="cal-input" placeholder="calendar.google.com/... or outlook link"/><button class="cal-save">Save</button>`;
+        card.querySelector('.connection-info').appendChild(inputWrap);
+        card.classList.add('selected');
+        const input=inputWrap.querySelector('.cal-input');
+        const saveBtn=inputWrap.querySelector('.cal-save');
+        input.focus();
+        input.onclick=(ev)=>ev.stopPropagation();
+        saveBtn.onclick=(ev)=>{
+          ev.stopPropagation();
+          const url=input.value.trim();
+          if(!url){input.style.borderColor='var(--danger)';return;}
+          let normalized=url;
+          if(!normalized.startsWith('http')) normalized='https://'+normalized;
+          prefs.calendar_url=normalized;
+          inputWrap.remove();
+          badge.style.display='';
+          badge.className='connection-badge badge-connected';
+          badge.textContent='✓ Connected';
+        };
+        input.addEventListener('keydown',(ev)=>{
+          if(ev.key==='Enter'){ev.preventDefault();saveBtn.click();}
+        });
       };
     }
     grid.appendChild(card);
@@ -939,7 +1069,7 @@ async function askConnections(){
 
   await sleep(300);
   addButtons([['Continue →','continue']], async ()=>{
-    await addBotBubble(`Great! I'll notify you when integrations are ready. Let's start with your CV.`);
+    await addBotBubble(`Great! Your connections are saved. Let's start with your CV.`);
     await sleep(400);
     await askForCV();
   });
@@ -1321,6 +1451,9 @@ async function confirmPrefs(){
       industries: prefs.industries||['any'],
       company_sizes: prefs.company_sizes||['any'],
       employment_types: prefs.employment_types||['full-time'],
+      linkedin_url: prefs.linkedin_url||null,
+      email_address: prefs.email_address||null,
+      calendar_url: prefs.calendar_url||null,
     });
     removeTyping();
     phase = PHASES.ACTIVE;
@@ -1384,9 +1517,12 @@ function showMainMenu(){
   });
   addButtons([
     ['🤝 Find Recruiters','headhunters'],['💼 LinkedIn Tips','linkedin'],
+    ['📧 Email Templates','email'],['📅 Schedule','calendar'],
   ], async (val)=>{
     if(val==='headhunters') await showHeadhunters();
     if(val==='linkedin') await showLinkedInOptimize();
+    if(val==='email') await showEmailTemplates();
+    if(val==='calendar') await showCalendarAdvice();
   });
 }
 
@@ -1901,11 +2037,14 @@ async function showDashboard(){
     addButtons([
       ['🔍 Matches','matches'],['💜 Coach','coach'],
       ['🤝 Recruiters','headhunters'],['💼 LinkedIn','linkedin'],
+      ['📧 Emails','email'],['📅 Schedule','calendar'],
     ], async (val)=>{
       if(val==='matches') await showMatches();
       if(val==='coach') await showCoach();
       if(val==='headhunters') await showHeadhunters();
       if(val==='linkedin') await showLinkedInOptimize();
+      if(val==='email') await showEmailTemplates();
+      if(val==='calendar') await showCalendarAdvice();
     });
   } catch(e) {
     removeTyping();
@@ -2275,6 +2414,232 @@ async function showLinkedInOptimize(){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Email Templates
+// ─────────────────────────────────────────────────────────────────────────────
+async function showEmailTemplates(jobTitle='', company='', templateType='application'){
+  if(phase!==PHASES.ACTIVE) return;
+  addTyping();
+  try {
+    const res=await api('/api/email/templates','POST',{
+      job_title: jobTitle, company: company, template_type: templateType
+    });
+    removeTyping();
+    await addBotBubble('📧 **Email Templates** — copy and customize for your applications.');
+    const card = buildEmailCard(res);
+    addBotRow(card, false);
+  } catch(e) {
+    removeTyping();
+    await addBotBubble('❌ Couldn\'t generate email templates. Make sure you\'ve uploaded a CV first.');
+  }
+}
+
+function buildEmailCard(res){
+  const wrap=document.createElement('div');
+  wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
+  const card=document.createElement('div');
+  card.className='email-card';
+  card.innerHTML='<div class="email-header">📧 Email Templates</div>';
+
+  // Templates
+  if(res.templates&&res.templates.length){
+    const sec=document.createElement('div');
+    sec.className='email-section';
+    sec.innerHTML='<div class="email-section-title">Templates</div>';
+    res.templates.forEach(t=>{
+      const block=document.createElement('div');
+      block.className='email-template-block';
+      block.innerHTML=`
+        <div class="email-subject">Subject: ${t.subject||''}</div>
+        <div class="email-body">${(t.body||'').replace(/\n/g,'<br/>')}</div>`;
+      const cb=document.createElement('button');
+      cb.className='copy-btn';cb.style.cssText='position:absolute;top:6px;right:6px';
+      cb.textContent='Copy';
+      cb.onclick=()=>{
+        navigator.clipboard.writeText('Subject: '+t.subject+'\n\n'+t.body);
+        cb.textContent='Copied!';setTimeout(()=>cb.textContent='Copy',1500);
+      };
+      block.appendChild(cb);
+      if(t.tips&&t.tips.length){
+        t.tips.forEach(tip=>{
+          const tipEl=document.createElement('div');
+          tipEl.className='email-tip';
+          tipEl.textContent='💡 '+tip;
+          block.appendChild(tipEl);
+        });
+      }
+      sec.appendChild(block);
+    });
+    card.appendChild(sec);
+  }
+
+  // General tips
+  if(res.general_tips&&res.general_tips.length){
+    const sec=document.createElement('div');
+    sec.className='email-section';
+    sec.innerHTML='<div class="email-section-title">General Tips</div>';
+    res.general_tips.forEach(tip=>{
+      const row=document.createElement('div');
+      row.style.cssText='font-size:12px;color:var(--text-dim);padding:3px 0';
+      row.textContent='• '+tip;
+      sec.appendChild(row);
+    });
+    card.appendChild(sec);
+  }
+
+  // Signature suggestion
+  if(res.signature_suggestion){
+    const sec=document.createElement('div');
+    sec.className='email-section';
+    sec.innerHTML='<div class="email-section-title">Signature Suggestion</div>';
+    const block=document.createElement('div');
+    block.className='email-template-block';
+    block.innerHTML=`<div class="email-body">${res.signature_suggestion.replace(/\n/g,'<br/>')}</div>`;
+    const copyBtn=document.createElement('button');
+    copyBtn.className='copy-btn';copyBtn.style.cssText='position:absolute;top:6px;right:6px';
+    copyBtn.textContent='Copy';
+    copyBtn.onclick=()=>{
+      navigator.clipboard.writeText(res.signature_suggestion);
+      copyBtn.textContent='Copied!';setTimeout(()=>copyBtn.textContent='Copy',1500);
+    };
+    block.appendChild(copyBtn);
+    sec.appendChild(block);
+    card.appendChild(sec);
+  }
+
+  // Template type switcher
+  const btns=document.createElement('div');
+  btns.className='kb-row';btns.style.marginTop='8px';
+  [['Application','application'],['Follow-up','follow_up'],['Thank You','thank_you'],['Networking','networking']].forEach(([label,type])=>{
+    const btn=document.createElement('button');
+    btn.className='kb-btn';btn.textContent=label;btn.style.fontSize='11px';
+    btn.onclick=()=>showEmailTemplates('','',type);
+    btns.appendChild(btn);
+  });
+  card.appendChild(btns);
+
+  wrap.appendChild(card);
+  return wrap;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Calendar / Scheduling Advice
+// ─────────────────────────────────────────────────────────────────────────────
+async function showCalendarAdvice(jobTitle='', company='', interviewDate=''){
+  if(phase!==PHASES.ACTIVE) return;
+  addTyping();
+  try {
+    const res=await api('/api/calendar/advice','POST',{
+      job_title: jobTitle, company: company, interview_date: interviewDate||null
+    });
+    removeTyping();
+    await addBotBubble('📅 **Scheduling & Prep Advice** — optimize your job search time.');
+    const card = buildCalendarCard(res);
+    addBotRow(card, false);
+  } catch(e) {
+    removeTyping();
+    await addBotBubble('❌ Couldn\'t generate calendar advice. Make sure you\'ve uploaded a CV first.');
+  }
+}
+
+function buildCalendarCard(res){
+  const wrap=document.createElement('div');
+  wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
+  const card=document.createElement('div');
+  card.className='cal-card';
+  card.innerHTML='<div class="cal-header">📅 Job Search Schedule</div>';
+
+  // Weekly schedule
+  if(res.weekly_schedule){
+    const sec=document.createElement('div');
+    sec.className='cal-section';
+    sec.innerHTML='<div class="cal-section-title">Weekly Focus Areas</div>';
+    const days=['monday','tuesday','wednesday','thursday','friday'];
+    days.forEach(day=>{
+      if(res.weekly_schedule[day]){
+        const row=document.createElement('div');
+        row.className='cal-day';
+        row.innerHTML=`<span class="cal-day-name">${day.charAt(0).toUpperCase()+day.slice(1)}</span>
+          <span class="cal-day-activity">${res.weekly_schedule[day]}</span>`;
+        sec.appendChild(row);
+      }
+    });
+    card.appendChild(sec);
+  }
+
+  // Time blocks
+  if(res.time_blocks&&res.time_blocks.length){
+    const sec=document.createElement('div');
+    sec.className='cal-section';
+    sec.innerHTML='<div class="cal-section-title">Optimal Time Blocks</div>';
+    res.time_blocks.forEach(b=>{
+      const block=document.createElement('div');
+      block.className='cal-block';
+      block.innerHTML=`<div class="cal-block-title">${b.block}</div>
+        <div>${b.activity}</div>
+        <div class="cal-block-desc">${b.rationale}</div>`;
+      sec.appendChild(block);
+    });
+    card.appendChild(sec);
+  }
+
+  // Prep schedule
+  if(res.prep_schedule&&res.prep_schedule.length){
+    const sec=document.createElement('div');
+    sec.className='cal-section';
+    sec.innerHTML='<div class="cal-section-title">Interview Prep Timeline</div>';
+    res.prep_schedule.forEach(p=>{
+      const block=document.createElement('div');
+      block.className='cal-block';
+      const dayLabel = p.day_offset===0?'Interview Day':
+        p.day_offset<0?Math.abs(p.day_offset)+' day'+(Math.abs(p.day_offset)>1?'s':'')+' before':
+        p.day_offset+' day'+(p.day_offset>1?'s':'')+' after';
+      block.innerHTML=`<div class="cal-block-title">${dayLabel}: ${p.title}</div>
+        <div style="font-size:11px;color:var(--text-muted)">~${p.duration_minutes} min</div>`;
+      const ul=document.createElement('ul');
+      ul.style.cssText='margin:4px 0 0 16px;font-size:12px;color:var(--text-dim)';
+      (p.tasks||[]).forEach(t=>{
+        const li=document.createElement('li');li.textContent=t;ul.appendChild(li);
+      });
+      block.appendChild(ul);
+      sec.appendChild(block);
+    });
+    card.appendChild(sec);
+  }
+
+  // Follow-up reminders
+  if(res.follow_up_reminders&&res.follow_up_reminders.length){
+    const sec=document.createElement('div');
+    sec.className='cal-section';
+    sec.innerHTML='<div class="cal-section-title">Follow-Up Reminders</div>';
+    res.follow_up_reminders.forEach(r=>{
+      const block=document.createElement('div');
+      block.className='cal-block';
+      block.innerHTML=`<div class="cal-block-title">Day +${r.day_offset}: ${r.action}</div>
+        <div class="cal-block-desc">${r.template}</div>`;
+      sec.appendChild(block);
+    });
+    card.appendChild(sec);
+  }
+
+  // Tips
+  if(res.tips&&res.tips.length){
+    const sec=document.createElement('div');
+    sec.className='cal-section';
+    sec.innerHTML='<div class="cal-section-title">Time Management Tips</div>';
+    res.tips.forEach(t=>{
+      const row=document.createElement('div');
+      row.style.cssText='font-size:12px;color:var(--text-dim);padding:3px 0';
+      row.textContent='• '+t;
+      sec.appendChild(row);
+    });
+    card.appendChild(sec);
+  }
+
+  wrap.appendChild(card);
+  return wrap;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // New Onboarding: searchJobsByHistory → showLinkedInOnboarding → confirmAndComplete
 // ─────────────────────────────────────────────────────────────────────────────
 async function searchJobsByHistory(){
@@ -2386,6 +2751,8 @@ async function confirmAndComplete(){
       company_sizes: ['any'],
       employment_types: ['any'],
       linkedin_url: prefs.linkedin_url || null,
+      email_address: prefs.email_address || null,
+      calendar_url: prefs.calendar_url || null,
     });
     removeTyping();
     phase = PHASES.ACTIVE;
@@ -2538,6 +2905,8 @@ async function handleSend(){
     if(low.includes('search'))     { showSearchBar(); return; }
     if(low.includes('recruit') || low.includes('headhunt')) { await showHeadhunters(); return; }
     if(low.includes('linkedin'))   { await showLinkedInOptimize(); return; }
+    if(low.includes('email') || low.includes('template')) { await showEmailTemplates(); return; }
+    if(low.includes('calendar') || low.includes('schedule') || low.includes('interview prep')) { await showCalendarAdvice(); return; }
     if(low.includes('coach') || low.includes('support') || low.includes('feel')) { await showCoach(text); return; }
 
     // If search-input exists, auto-search
@@ -2552,7 +2921,7 @@ async function handleSend(){
     if(low.match(/sad|tired|frustrated|rejected|discourag|anxious|stress|scared|worried|hopeless|overwhelm/)){
       await showCoach(text);
     } else {
-      await addBotBubble(`I heard you! Try:\n• **matches** — browse job matches\n• **dashboard** — overview & pipeline\n• **search** — keyword job search\n• **coach** — emotional support\n• **linkedin** — profile tips\n• **recruiters** — find headhunters`);
+      await addBotBubble(`I heard you! Try:\n• **matches** — browse job matches\n• **dashboard** — overview & pipeline\n• **search** — keyword job search\n• **coach** — emotional support\n• **linkedin** — profile tips\n• **email** — email templates\n• **schedule** — job search schedule\n• **recruiters** — find headhunters`);
     }
   }
 }

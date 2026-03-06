@@ -55,6 +55,8 @@ from services.job_match import SAMPLE_JOBS, get_top_matches, get_top_matches_liv
 from services.job_search import search_jobs_by_keywords
 from services.job_scraper import scrape_and_store, get_total_job_count
 from services.linkedin_optimizer import generate_linkedin_optimization
+from services.email_templates import generate_email_templates
+from services.calendar_manager import generate_calendar_advice
 from web.auth import create_token, get_current_user
 
 # ---------------------------------------------------------------------------
@@ -237,6 +239,8 @@ class PreferencesBody(BaseModel):
     company_sizes: list[str]
     employment_types: list[str]
     linkedin_url: Optional[str] = None
+    email_address: Optional[str] = None
+    calendar_url: Optional[str] = None
 
 
 class ApplyBody(BaseModel):
@@ -290,6 +294,18 @@ class CoachBody(BaseModel):
 
 class LinkedInOptimizeBody(BaseModel):
     linkedin_url: Optional[str] = None
+
+
+class EmailTemplatesBody(BaseModel):
+    job_title: str = ""
+    company: str = ""
+    template_type: str = "application"  # application | follow_up | thank_you | networking
+
+
+class CalendarAdviceBody(BaseModel):
+    job_title: str = ""
+    company: str = ""
+    interview_date: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -475,6 +491,8 @@ async def save_preferences(
             company_sizes=body.company_sizes,
             employment_types=body.employment_types,
             linkedin_url=body.linkedin_url,
+            email_address=body.email_address,
+            calendar_url=body.calendar_url,
         )
         if prefs:
             for k, v in fields.items():
@@ -1132,6 +1150,78 @@ async def optimize_linkedin(
         linkedin_url = body.linkedin_url or (prefs.linkedin_url if prefs else None)
 
     result = await generate_linkedin_optimization(cv_data, target_roles, linkedin_url=linkedin_url)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Routes — email templates
+# ---------------------------------------------------------------------------
+
+@app.post("/api/email/templates")
+@limiter.limit("10/minute")
+async def email_templates(
+    body: EmailTemplatesBody,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """Generate personalized email templates for job applications."""
+    async with AsyncSessionLocal() as db:
+        cv_res = await db.execute(
+            select(CV).where(CV.user_id == user.id, CV.is_active == True)
+        )
+        cv = cv_res.scalar_one_or_none()
+        cv_data: dict = cv.parsed_data if cv and cv.parsed_data else {}
+
+        pref_res = await db.execute(
+            select(UserPreferences).where(UserPreferences.user_id == user.id)
+        )
+        prefs = pref_res.scalar_one_or_none()
+        target_roles = prefs.target_roles if prefs else []
+        email_address = prefs.email_address if prefs else None
+
+    result = await generate_email_templates(
+        cv_data, target_roles,
+        job_title=body.job_title,
+        company=body.company,
+        template_type=body.template_type,
+        email_address=email_address,
+    )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Routes — calendar advice
+# ---------------------------------------------------------------------------
+
+@app.post("/api/calendar/advice")
+@limiter.limit("10/minute")
+async def calendar_advice(
+    body: CalendarAdviceBody,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """Generate interview scheduling and job search time management advice."""
+    async with AsyncSessionLocal() as db:
+        cv_res = await db.execute(
+            select(CV).where(CV.user_id == user.id, CV.is_active == True)
+        )
+        cv = cv_res.scalar_one_or_none()
+        cv_data: dict = cv.parsed_data if cv and cv.parsed_data else {}
+
+        pref_res = await db.execute(
+            select(UserPreferences).where(UserPreferences.user_id == user.id)
+        )
+        prefs = pref_res.scalar_one_or_none()
+        target_roles = prefs.target_roles if prefs else []
+        calendar_url = prefs.calendar_url if prefs else None
+
+    result = await generate_calendar_advice(
+        cv_data, target_roles,
+        job_title=body.job_title,
+        company=body.company,
+        interview_date=body.interview_date,
+        calendar_url=calendar_url,
+    )
     return result
 
 

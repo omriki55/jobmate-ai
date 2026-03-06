@@ -61,6 +61,8 @@ class UserPreferences(Base):
     daily_apply_limit = Column(Integer, default=10)
     blocklist = Column(JSON, default=list)       # blocked companies
     linkedin_url = Column(String, nullable=True)
+    email_address = Column(String, nullable=True)
+    calendar_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
