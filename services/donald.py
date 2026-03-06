@@ -173,9 +173,7 @@ async def chat_with_donald(
 
     except Exception as exc:
         logger.error("Donald chat failed: %s — %s", type(exc).__name__, exc)
-        fb = _fallback(user_message)
-        fb["_debug_error"] = f"{type(exc).__name__}: {exc}"
-        return fb
+        return _fallback(user_message)
 
 
 def _fallback(user_message: str) -> dict[str, Any]:
