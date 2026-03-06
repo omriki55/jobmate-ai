@@ -44,7 +44,7 @@ from db.models import (
 )
 from services.coach import get_coaching_message
 from services.company_research import research_company
-from services.cv_export import generate_tailored_cv_docx
+from services.cv_export import generate_tailored_cv_docx, generate_improved_cv_docx
 from services.cv_improver import generate_cv_improvement
 from services.cv_parser import process_cv
 from services.cv_tailor import tailor_cv_for_job
@@ -307,6 +307,12 @@ class CalendarAdviceBody(BaseModel):
     job_title: str = ""
     company: str = ""
     interview_date: Optional[str] = None
+
+
+class ExportImprovedBody(BaseModel):
+    improved_summary: Optional[str] = None
+    rewritten_experience: list[dict] = []
+    skills_to_add: list[str] = []
 
 
 # ---------------------------------------------------------------------------
@@ -700,6 +706,41 @@ async def export_cv(job_id: int, user: User = Depends(get_current_user)):
     safe_company = "".join(c for c in job_dict["company"] if c.isalnum() or c in "- ")
     safe_title   = "".join(c for c in job_dict["title"]   if c.isalnum() or c in "- ")
     filename = f"CV_{safe_company}_{safe_title}.docx".replace(" ", "_")
+
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/cv/export-improved")
+@limiter.limit("5/minute")
+async def export_improved_cv(
+    request: Request,
+    body: ExportImprovedBody,
+    user: User = Depends(get_current_user),
+):
+    """Generate a .docx with AI-improved CV sections merged in."""
+    async with AsyncSessionLocal() as db:
+        cv_res = await db.execute(
+            select(CV).where(CV.user_id == user.id, CV.is_active == True)
+        )
+        cv = cv_res.scalar_one_or_none()
+        cv_data: dict = cv.parsed_data if cv and cv.parsed_data else {}
+
+    if not cv_data:
+        raise HTTPException(status_code=404, detail="No CV found.")
+
+    improvements = {
+        "improved_summary": body.improved_summary,
+        "rewritten_experience": body.rewritten_experience,
+        "skills_to_add": body.skills_to_add,
+    }
+    docx_bytes = generate_improved_cv_docx(cv_data, improvements)
+
+    name = cv_data.get("name", "Candidate").replace(" ", "_")
+    filename = f"CV_{name}_Improved.docx"
 
     return Response(
         content=docx_bytes,

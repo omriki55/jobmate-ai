@@ -196,3 +196,115 @@ def generate_tailored_cv_docx(
     doc.save(buf)
     buf.seek(0)
     return buf.read()
+
+
+# ---------------------------------------------------------------------------
+# Improved CV export (standalone — no job-specific tailoring)
+# ---------------------------------------------------------------------------
+
+def generate_improved_cv_docx(
+    cv_data: dict[str, Any],
+    improvements: dict[str, Any],
+) -> bytes:
+    """
+    Build a .docx using the user's CV data with AI-improved sections merged in.
+    `improvements` keys: improved_summary, rewritten_experience, skills_to_add.
+    """
+    doc = Document()
+
+    for section in doc.sections:
+        section.top_margin    = Inches(0.75)
+        section.bottom_margin = Inches(0.75)
+        section.left_margin   = Inches(1.0)
+        section.right_margin  = Inches(1.0)
+
+    # ── Name ──────────────────────────────────────────────────────────────
+    name = cv_data.get("name") or "Candidate"
+    h = doc.add_heading(name, level=0)
+    h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if h.runs:
+        h.runs[0].font.color.rgb = ACCENT
+
+    # Contact line
+    contact_parts = [
+        v for v in [cv_data.get("email"), cv_data.get("phone"), cv_data.get("location")]
+        if v
+    ]
+    if contact_parts:
+        cp = doc.add_paragraph(" · ".join(contact_parts))
+        cp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if cp.runs:
+            cp.runs[0].font.size = Pt(9)
+            cp.runs[0].font.color.rgb = MUTED
+
+    # ── Professional Summary ──────────────────────────────────────────────
+    summary = improvements.get("improved_summary") or cv_data.get("summary")
+    if summary:
+        _section_heading(doc, "Professional Summary")
+        _body(doc, summary)
+
+    # ── Skills ────────────────────────────────────────────────────────────
+    all_skills = list(cv_data.get("skills", []))
+    for s in improvements.get("skills_to_add", []):
+        if s.lower() not in [x.lower() for x in all_skills]:
+            all_skills.append(s)
+    if all_skills:
+        _section_heading(doc, "Skills")
+        _body(doc, " · ".join(s.title() for s in all_skills))
+
+    # ── Experience ────────────────────────────────────────────────────────
+    experience = list(cv_data.get("experience", []))
+    rewritten = {
+        (r.get("company", ""), r.get("title", "")): r.get("improved", "")
+        for r in improvements.get("rewritten_experience", [])
+    }
+    if experience:
+        _section_heading(doc, "Experience")
+        for exp in experience:
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(6)
+            run = p.add_run(f"{exp.get('title', '')} — {exp.get('company', '')}")
+            run.bold = True
+            run.font.size = Pt(10)
+
+            start = exp.get("start_date", "")
+            end   = exp.get("end_date", "")
+            date_str = f"{start} – {end}".strip(" –")
+            if date_str:
+                dr = p.add_run(f"   {date_str}")
+                dr.font.size = Pt(9)
+                dr.font.color.rgb = MUTED
+
+            # Use improved description if available
+            key = (exp.get("company", ""), exp.get("title", ""))
+            desc = rewritten.get(key) or exp.get("description", "")
+            if desc:
+                _body(doc, desc)
+
+    # ── Education ─────────────────────────────────────────────────────────
+    education = cv_data.get("education", [])
+    if education:
+        _section_heading(doc, "Education")
+        for edu in education:
+            degree = edu.get("degree", "")
+            field  = edu.get("field", "")
+            inst   = edu.get("institution", "")
+            year   = edu.get("year", "")
+            p = doc.add_paragraph()
+            run1 = p.add_run(f"{degree} in {field}".strip(" in"))
+            run1.bold = True
+            run1.font.size = Pt(10)
+            run2 = p.add_run(f"  —  {inst}  ({year})".replace("  ()", ""))
+            run2.font.size = Pt(10)
+
+    # ── Languages ─────────────────────────────────────────────────────────
+    languages = cv_data.get("languages", [])
+    if languages:
+        _section_heading(doc, "Languages")
+        _body(doc, " · ".join(languages))
+
+    # ── Serialise ─────────────────────────────────────────────────────────
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.read()

@@ -743,6 +743,19 @@ header{
   padding-bottom:8px;border-bottom:1px dashed var(--border);
 }
 .cv-after{font-size:12px;color:var(--text);line-height:1.55}
+.cv-editable{
+  border:1px solid transparent;border-radius:6px;padding:6px 8px;
+  transition:border-color .2s,background .2s;outline:none;
+}
+.cv-editable:hover{border-color:var(--border)}
+.cv-editable:focus{border-color:var(--accent);background:rgba(16,217,160,.05)}
+.cv-download-btn{
+  display:block;width:100%;margin-top:14px;padding:10px;
+  background:var(--accent);color:#000;border:none;border-radius:10px;
+  font-size:13px;font-weight:600;cursor:pointer;transition:opacity .2s;
+}
+.cv-download-btn:hover{opacity:.85}
+.cv-download-btn:disabled{opacity:.5;cursor:wait}
 .cv-label{
   font-size:10px;font-weight:600;text-transform:uppercase;
   letter-spacing:.04em;margin-bottom:4px;
@@ -1377,6 +1390,8 @@ async function showCVImprovement(){
     addBotRow(card, false);
 
     await sleep(400);
+    await addBotBubble('✏️ You can **edit** any improved section above, then **download** your updated CV.');
+    await sleep(300);
     addButtons([['Continue →','continue']], async ()=>{
       await askLocation();
     });
@@ -1427,7 +1442,7 @@ function buildCVImprovementCard(res){
     card.appendChild(expl);
   }
 
-  // Summary: before/after
+  // Summary: before/after (editable)
   if(res.improved_summary){
     const lbl=document.createElement('div');
     lbl.className='tailor-section-label';
@@ -1440,26 +1455,24 @@ function buildCVImprovementCard(res){
         <div class="cv-label before">Current</div>
         ${res.original_summary||'No summary in current CV'}
       </div>
-      <div class="cv-after">
-        <div class="cv-label after">Improved</div>
-        ${res.improved_summary}
-      </div>`;
+      <div class="cv-label after">Improved <span style="font-weight:400;font-size:9px;color:var(--text-muted)">(click to edit)</span></div>
+      <div class="cv-after cv-editable" contenteditable="true" data-field="summary">${res.improved_summary}</div>`;
     const cb=document.createElement('button');
     cb.className='copy-btn';cb.style.cssText='position:absolute;top:6px;right:6px';
     cb.textContent='Copy';
-    cb.onclick=()=>{navigator.clipboard.writeText(res.improved_summary);cb.textContent='Copied!';setTimeout(()=>cb.textContent='Copy',1500)};
+    cb.onclick=()=>{navigator.clipboard.writeText(block.querySelector('.cv-editable').textContent);cb.textContent='Copied!';setTimeout(()=>cb.textContent='Copy',1500)};
     block.appendChild(cb);
     card.appendChild(block);
   }
 
-  // Rewritten experience
+  // Rewritten experience (editable)
   if(res.rewritten_experience?.length){
     const lbl=document.createElement('div');
     lbl.className='tailor-section-label';
     lbl.style.marginTop='10px';
     lbl.textContent='Experience Improvements';
     card.appendChild(lbl);
-    res.rewritten_experience.forEach(exp=>{
+    res.rewritten_experience.forEach((exp,i)=>{
       const block=document.createElement('div');
       block.className='cv-before-after';
       block.innerHTML=`
@@ -1468,15 +1481,13 @@ function buildCVImprovementCard(res){
           <div class="cv-label before">Current</div>
           ${exp.original||'No description'}
         </div>
-        <div class="cv-after">
-          <div class="cv-label after">Improved</div>
-          ${exp.improved||''}
-        </div>
+        <div class="cv-label after">Improved <span style="font-weight:400;font-size:9px;color:var(--text-muted)">(click to edit)</span></div>
+        <div class="cv-after cv-editable" contenteditable="true" data-field="exp" data-index="${i}" data-company="${exp.company||''}" data-title="${exp.title||''}">${exp.improved||''}</div>
         <div style="margin-top:6px">${(exp.changes||[]).map(c=>`<span class="change-tag">${c}</span>`).join('')}</div>`;
       const cb2=document.createElement('button');
       cb2.className='copy-btn';cb2.style.cssText='position:absolute;top:6px;right:6px';
       cb2.textContent='Copy';
-      cb2.onclick=()=>{navigator.clipboard.writeText(exp.improved||'');cb2.textContent='Copied!';setTimeout(()=>cb2.textContent='Copy',1500)};
+      cb2.onclick=()=>{navigator.clipboard.writeText(block.querySelector('.cv-editable').textContent);cb2.textContent='Copied!';setTimeout(()=>cb2.textContent='Copy',1500)};
       block.appendChild(cb2);
       card.appendChild(block);
     });
@@ -1516,6 +1527,50 @@ function buildCVImprovementCard(res){
     });
     card.appendChild(ul);
   }
+
+  // Download button
+  const dlBtn=document.createElement('button');
+  dlBtn.className='cv-download-btn';
+  dlBtn.textContent='📥 Download Improved CV';
+  dlBtn.onclick=async()=>{
+    // Collect edited content from contenteditable blocks
+    const summaryEl=card.querySelector('[data-field="summary"]');
+    const editedSummary=summaryEl?summaryEl.textContent.trim():null;
+    const editedExp=[];
+    card.querySelectorAll('[data-field="exp"]').forEach(el=>{
+      editedExp.push({
+        company:el.dataset.company,
+        title:el.dataset.title,
+        improved:el.textContent.trim(),
+      });
+    });
+    const skills=[];
+    card.querySelectorAll('.skill-tag').forEach(t=>skills.push(t.textContent.trim()));
+
+    dlBtn.disabled=true;dlBtn.textContent='⏳ Generating…';
+    try {
+      const hdrs={'Content-Type':'application/json'};
+      if(authToken) hdrs['Authorization']=`Bearer ${authToken}`;
+      const r=await fetch('/api/cv/export-improved',{
+        method:'POST',headers:hdrs,
+        body:JSON.stringify({improved_summary:editedSummary,rewritten_experience:editedExp,skills_to_add:skills}),
+      });
+      if(!r.ok) throw new Error('Export failed');
+      const blob=await r.blob();
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;
+      a.download=r.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g,'')||'CV_Improved.docx';
+      a.click();
+      URL.revokeObjectURL(url);
+      dlBtn.textContent='✅ Downloaded!';
+      setTimeout(()=>{dlBtn.textContent='📥 Download Improved CV';dlBtn.disabled=false},2000);
+    } catch(e){
+      dlBtn.textContent='❌ Failed — try again';dlBtn.disabled=false;
+      setTimeout(()=>{dlBtn.textContent='📥 Download Improved CV'},2000);
+    }
+  };
+  card.appendChild(dlBtn);
 
   wrap.appendChild(card);
   return wrap;
