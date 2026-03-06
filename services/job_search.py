@@ -26,10 +26,13 @@ async def search_jobs_by_keywords(
     preferences: dict | None = None,
     limit: int = 10,
     threshold: int = 15,
+    location_filter: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Full-text keyword search against Job.title, description, requirements.
     Results are re-scored using the existing scoring engine for ranking.
+    Optionally filter by location: "remote" → remote jobs only,
+    specific location → ilike match, None/"any" → no filter.
     """
     if not keywords:
         return []
@@ -48,14 +51,23 @@ async def search_jobs_by_keywords(
         conditions.append(Job.company.ilike(kw_pattern))
         conditions.append(Job.location.ilike(kw_pattern))
 
+    query = (
+        select(Job)
+        .where(Job.posted_at >= cutoff)
+        .where(or_(*conditions))
+    )
+
+    # Apply location filter
+    if location_filter and location_filter.lower() not in ("any", ""):
+        if location_filter.lower() == "remote":
+            query = query.where(Job.remote == True)
+        else:
+            query = query.where(Job.location.ilike(f"%{location_filter}%"))
+
+    query = query.order_by(Job.posted_at.desc()).limit(200)
+
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(Job)
-            .where(Job.posted_at >= cutoff)
-            .where(or_(*conditions))
-            .order_by(Job.posted_at.desc())
-            .limit(200)
-        )
+        result = await db.execute(query)
         db_jobs = result.scalars().all()
 
     if not db_jobs:

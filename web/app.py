@@ -252,6 +252,7 @@ class InterviewPrepBody(BaseModel):
 class SearchBody(BaseModel):
     keywords: list[str]
     limit: int = 10
+    location_filter: Optional[str] = None
 
 
 class OptimizeBody(BaseModel):
@@ -708,6 +709,7 @@ async def search_jobs(
         cv_skills=cv_skills,
         preferences=preferences,
         limit=body.limit,
+        location_filter=body.location_filter,
     )
     return {"results": results, "query": body.keywords, "count": len(results)}
 

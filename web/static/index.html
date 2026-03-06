@@ -593,6 +593,26 @@ header{
   display:flex;align-items:center;justify-content:center;
 }
 .btn-with-notif{position:relative}
+
+/* ── Connection cards (onboarding) ────────────────── */
+.connections-grid{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.connection-card{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:14px;padding:14px 16px;display:flex;
+  align-items:center;gap:12px;cursor:pointer;transition:.2s;
+}
+.connection-card:hover{border-color:var(--accent);background:var(--btn-hover)}
+.connection-card.selected{border-color:var(--accent);background:var(--tag-bg)}
+.connection-icon{font-size:24px;flex-shrink:0;width:36px;text-align:center}
+.connection-info{flex:1}
+.connection-title{font-size:13px;font-weight:600;color:var(--text)}
+.connection-desc{font-size:11px;color:var(--text-muted);margin-top:2px}
+.connection-badge{
+  font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px;
+  white-space:nowrap;
+}
+.badge-soon{background:rgba(245,158,11,.12);color:var(--warning)}
+.badge-connected{background:var(--tag-bg);color:var(--accent)}
 </style>
 </head>
 <body>
@@ -637,10 +657,12 @@ header{
 // State
 // ─────────────────────────────────────────────────────────────────────────────
 const PHASES = {
-  WELCOME:'welcome', AWAITING_CV:'awaiting_cv', CV_PROCESSING:'cv_processing',
+  WELCOME:'welcome', CONNECTIONS:'connections',
+  AWAITING_CV:'awaiting_cv', CV_PROCESSING:'cv_processing',
   AWAITING_ROLE:'awaiting_role', AWAITING_LOCATION:'awaiting_location',
   AWAITING_SALARY:'awaiting_salary', AWAITING_INDUSTRY:'awaiting_industry',
   AWAITING_SIZE:'awaiting_size', AWAITING_EMP:'awaiting_emp',
+  SEARCHING_JOBS:'searching_jobs', LINKEDIN_ONBOARDING:'linkedin_onboarding',
   CONFIRM:'confirm', ACTIVE:'active',
 };
 let phase = PHASES.WELCOME;
@@ -786,14 +808,67 @@ async function boot(){
   }
   localStorage.setItem('jm_last_visit', '0'); // reset for new onboarding
   // Fresh user
-  await addBotBubble(`👋 Welcome to **JobMate AI** — your AI career companion.\n\nI'll help you:\n• Tailor your CV for every role\n• Match and apply to jobs early\n• Track every application\n• Prep you for interviews\n\nLet's get you hired. 🎯`, {delay:300});
+  await addBotBubble(`👋 Welcome to **JobMate AI** — your AI career companion.\n\nI'll help you:\n• Tailor your CV for every role\n• Match and apply to jobs early\n• Track every application\n• Prep you for interviews\n• Optimize your LinkedIn for ATS\n\nLet's get you hired. 🎯`, {delay:300});
   await sleep(600);
-  await askForCV();
+  await askConnections();
+}
+
+async function askConnections(){
+  phase = PHASES.CONNECTIONS;
+  await addBotBubble(`🔗 **To give you the best experience, I'd like to connect to your accounts:**`);
+
+  const wrap=document.createElement('div');
+  wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
+  const grid=document.createElement('div');
+  grid.className='connections-grid';
+
+  const connections = [
+    {icon:'💼',title:'LinkedIn',desc:'Import profile & optimize for ATS',key:'linkedin'},
+    {icon:'📧',title:'Email',desc:'Track application responses automatically',key:'email'},
+    {icon:'📅',title:'Calendar',desc:'Schedule interviews & reminders',key:'calendar'},
+  ];
+
+  prefs.connections = {};
+  connections.forEach(c=>{
+    const card=document.createElement('div');
+    card.className='connection-card';
+    card.innerHTML=`
+      <div class="connection-icon">${c.icon}</div>
+      <div class="connection-info">
+        <div class="connection-title">${c.title}</div>
+        <div class="connection-desc">${c.desc}</div>
+      </div>
+      <span class="connection-badge badge-soon">Coming Soon</span>`;
+    card.onclick=()=>{
+      card.classList.toggle('selected');
+      const badge=card.querySelector('.connection-badge');
+      if(card.classList.contains('selected')){
+        badge.className='connection-badge badge-connected';
+        badge.textContent='✓ Queued';
+        prefs.connections[c.key]=true;
+      } else {
+        badge.className='connection-badge badge-soon';
+        badge.textContent='Coming Soon';
+        delete prefs.connections[c.key];
+      }
+    };
+    grid.appendChild(card);
+  });
+
+  wrap.appendChild(grid);
+  addBotRow(wrap,false);
+
+  await sleep(300);
+  addButtons([['Continue →','continue']], async ()=>{
+    await addBotBubble(`Great! I'll notify you when integrations are ready. Let's start with your CV.`);
+    await sleep(400);
+    await askForCV();
+  });
 }
 
 async function askForCV(){
   phase = PHASES.AWAITING_CV;
-  await addBotBubble(`**First, send me your CV.**\n\nDrop a PDF, DOCX, or plain text file below — I'll score it and tell you exactly how to improve it.`);
+  await addBotBubble(`**Send me your CV.**\n\nDrop a PDF, DOCX, or plain text file below — I'll score it and tell you exactly how to improve it.`);
   // Render drop zone inside a bot row
   const dz = buildDropZone();
   const wrap = document.createElement('div');
@@ -877,7 +952,7 @@ async function showCVScore(d){
   await sleep(600);
   await addBotBubble(`Great start, **${d.name||'there'}**! I'll tailor your CV for every role before applying.\n\nSkills I found: ${(d.skills||[]).slice(0,5).map(s=>`\`${s}\``).join(' ')}`);
   await sleep(500);
-  await askRole();
+  await askLocation();
 }
 
 async function askRole(){
@@ -903,7 +978,7 @@ async function askLocation(){
   ], async (val, label)=>{
     prefs.locations = [val];
     addUserBubble(label);
-    await askSalary();
+    await searchJobsByHistory();
   });
 }
 
@@ -1952,129 +2027,256 @@ async function showLinkedInOptimize(){
     const res=await api('/api/linkedin/optimize','POST',{});
     removeTyping();
     await addBotBubble('💼 **LinkedIn Profile Optimization** — copy these suggestions to your profile.');
-
-    const wrap=document.createElement('div');
-    wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
-    const card=document.createElement('div');
-    card.className='li-card';
-    card.innerHTML='<div class="li-header">💼 LinkedIn Optimizer</div>';
-
-    // Profile score
-    if(res.profile_strength_score){
-      const scoreBar=document.createElement('div');
-      scoreBar.className='ats-bar';
-      const circum=2*Math.PI*16;
-      const offset=circum-(res.profile_strength_score/100)*circum;
-      scoreBar.innerHTML=`
-        <div class="ats-ring">
-          <svg width="44" height="44" viewBox="0 0 44 44">
-            <circle fill="none" stroke="var(--border)" stroke-width="5" cx="22" cy="22" r="16"/>
-            <circle fill="none" stroke="#0a66c2" stroke-width="5" cx="22" cy="22" r="16"
-              stroke-dasharray="${circum}" stroke-dashoffset="${offset}"
-              stroke-linecap="round" style="transform:rotate(-90deg);transform-origin:center"/>
-          </svg>
-          <div class="ats-ring-num" style="color:#0a66c2">${res.profile_strength_score}</div>
-        </div>
-        <div>
-          <div style="font-size:12px;font-weight:600;color:var(--text)">Profile Strength: ${res.profile_strength_score}/100</div>
-        </div>`;
-      card.appendChild(scoreBar);
-    }
-
-    // Headlines
-    if(res.headline_suggestions?.length){
-      const sec=document.createElement('div');
-      sec.className='li-section';
-      sec.innerHTML='<div class="li-section-title">📝 Headline Suggestions</div>';
-      res.headline_suggestions.forEach(h=>{
-        const row=document.createElement('div');
-        row.className='li-suggestion';
-        row.innerHTML=`<span>${h}</span>`;
-        const cb=document.createElement('button');
-        cb.className='copy-btn';cb.textContent='Copy';
-        cb.onclick=()=>{navigator.clipboard.writeText(h);cb.textContent='Copied!';setTimeout(()=>cb.textContent='Copy',1500)};
-        row.appendChild(cb);
-        sec.appendChild(row);
-      });
-      card.appendChild(sec);
-    }
-
-    // About section
-    if(res.about_section){
-      const sec=document.createElement('div');
-      sec.className='li-section';
-      sec.innerHTML='<div class="li-section-title">👤 About Section Draft</div>';
-      const about=document.createElement('div');
-      about.className='li-about';
-      about.textContent=res.about_section;
-      const cb=document.createElement('button');
-      cb.className='copy-btn';
-      cb.style.cssText='position:absolute;top:6px;right:6px';
-      about.style.position='relative';
-      cb.textContent='Copy';
-      cb.onclick=()=>{navigator.clipboard.writeText(res.about_section);cb.textContent='Copied!';setTimeout(()=>cb.textContent='Copy',1500)};
-      about.appendChild(cb);
-      sec.appendChild(about);
-      card.appendChild(sec);
-    }
-
-    // Experience tips
-    if(res.experience_tips?.length){
-      const sec=document.createElement('div');
-      sec.className='li-section';
-      sec.innerHTML='<div class="li-section-title">💼 Experience Optimization</div>';
-      res.experience_tips.forEach(tip=>{
-        const el=document.createElement('div');
-        el.className='li-exp-tip';
-        el.innerHTML=`<div class="li-exp-role">${tip.role||'Role'}</div>
-          ${tip.current?`<div class="li-exp-current">Current: ${tip.current}</div>`:''}
-          <div class="li-exp-suggested">→ ${tip.suggested}</div>`;
-        sec.appendChild(el);
-      });
-      card.appendChild(sec);
-    }
-
-    // Skills to add
-    if(res.skills_to_add?.length){
-      const sec=document.createElement('div');
-      sec.className='li-section';
-      sec.innerHTML='<div class="li-section-title">🏷️ Skills to Add</div>';
-      const tags=document.createElement('div');
-      tags.className='skill-tags';
-      res.skills_to_add.forEach(s=>{
-        const tag=document.createElement('span');
-        tag.className='skill-tag';tag.style.borderColor='#0a66c2';tag.style.color='#60a5fa';
-        tag.textContent=s;
-        tags.appendChild(tag);
-      });
-      sec.appendChild(tags);
-      card.appendChild(sec);
-    }
-
-    // Section checklist
-    if(res.section_checklist?.length){
-      const sec=document.createElement('div');
-      sec.className='li-section';
-      sec.innerHTML='<div class="li-section-title">✅ Section Checklist</div>';
-      const ul=document.createElement('ul');
-      ul.className='li-checklist';
-      res.section_checklist.forEach((item,i)=>{
-        const li=document.createElement('li');
-        const statusIcon=item.status==='good'?'✅':item.status==='missing'?'❌':'⚠️';
-        li.innerHTML=`<span class="li-check" id="li-check-${i}" onclick="this.classList.toggle('checked');this.textContent=this.classList.contains('checked')?'✓':''"></span>
-          ${statusIcon} <strong>${item.section}</strong>: ${item.action}`;
-        ul.appendChild(li);
-      });
-      sec.appendChild(ul);
-      card.appendChild(sec);
-    }
-
-    wrap.appendChild(card);
-    addBotRow(wrap,false);
+    const card = buildLinkedInCard(res);
+    addBotRow(card, false);
   } catch(e) {
     removeTyping();
     await addBotBubble('❌ Couldn\'t generate LinkedIn tips. Make sure you\'ve uploaded a CV first.');
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// New Onboarding: searchJobsByHistory → showLinkedInOnboarding → confirmAndComplete
+// ─────────────────────────────────────────────────────────────────────────────
+async function searchJobsByHistory(){
+  phase = PHASES.SEARCHING_JOBS;
+  await addBotBubble(`🔍 **Searching for jobs based on your experience...**`);
+  addTyping();
+
+  // Extract job titles from CV experience
+  let keywords = [];
+  if(cvData){
+    const exp = cvData.experience || cvData.parsed_data?.experience || [];
+    if(exp.length){
+      keywords = [...new Set(exp.map(e=>e.title||e.role||'').filter(Boolean))].slice(0,3);
+    }
+    if(!keywords.length){
+      // Fallback to primary_domain + skills
+      const domain = cvData.primary_domain || '';
+      const skills = (cvData.skills || []).slice(0,3);
+      if(domain) keywords.push(domain);
+      keywords = keywords.concat(skills);
+    }
+  }
+
+  if(!keywords.length) keywords = ['software','engineer']; // absolute fallback
+
+  // Store extracted roles as target_roles
+  prefs.target_roles = keywords.slice(0,3);
+
+  try {
+    const location = (prefs.locations||[])[0] || null;
+    const locFilter = (location && location !== 'any') ? location : null;
+    const res = await api('/api/jobs/search','POST',{
+      keywords: keywords,
+      location_filter: locFilter,
+      limit: 6,
+    });
+    removeTyping();
+
+    const results = res.results || [];
+    if(!results.length){
+      await addBotBubble(`📭 I'm still building the job database for your area. I'll have matches ready soon!\n\nKeywords used: ${keywords.map(k=>`\`${k}\``).join(' ')}`);
+    } else {
+      pendingMatches = results;
+      await addBotBubble(`🎯 Found **${results.length}** jobs matching your experience (${keywords.join(', ')}):`);
+      const container = document.createElement('div');
+      container.style.cssText='display:flex;flex-direction:column;gap:8px;margin-top:4px';
+      results.forEach(job=>container.appendChild(buildJobCard(job)));
+
+      const bar=document.createElement('div');
+      bar.id='apply-bar';
+      bar.innerHTML=`<span>Apply to all ${results.length} roles at once?</span>`;
+      const btn=document.createElement('button');
+      btn.className='apply-all-btn';
+      btn.textContent='🚀 Apply to All';
+      btn.onclick=()=>applyToAll();
+      bar.appendChild(btn);
+      container.appendChild(bar);
+
+      const wrap=document.createElement('div');
+      wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:90%';
+      wrap.appendChild(container);
+      addBotRow(wrap,false);
+    }
+  } catch(e){
+    removeTyping();
+    await addBotBubble(`📭 Couldn't search jobs right now, but don't worry — I'll find matches for you once set up.`);
+  }
+
+  await sleep(800);
+  await showLinkedInOnboarding();
+}
+
+async function showLinkedInOnboarding(){
+  phase = PHASES.LINKEDIN_ONBOARDING;
+  await addBotBubble(`💼 **Let me optimize your LinkedIn for ATS...**\n\nThis helps recruiters find you faster.`);
+  addTyping();
+  try {
+    const res = await api('/api/linkedin/optimize','POST',{});
+    removeTyping();
+    const card = buildLinkedInCard(res);
+    addBotRow(card, false);
+
+    await sleep(400);
+    addButtons([
+      ["✅ I've updated my profile",'done'],
+      ["⏭️ I'll do it later",'later'],
+    ], async (val)=>{
+      if(val==='done') addUserBubble("I've updated my LinkedIn!");
+      else addUserBubble("I'll do it later");
+      await confirmAndComplete();
+    });
+  } catch(e){
+    removeTyping();
+    await addBotBubble(`💼 LinkedIn optimization requires a CV first. No worries — you can access it anytime from the menu!`);
+    await sleep(400);
+    await confirmAndComplete();
+  }
+}
+
+async function confirmAndComplete(){
+  addTyping();
+  try {
+    await api('/api/preferences','POST',{
+      target_roles: prefs.target_roles || [],
+      locations: prefs.locations || ['any'],
+      min_salary: null,
+      salary_currency: 'USD',
+      industries: ['any'],
+      company_sizes: ['any'],
+      employment_types: ['any'],
+    });
+    removeTyping();
+    phase = PHASES.ACTIVE;
+    await addBotBubble(`🎉 **You're all set!**\n\nYour profile is ready. Every day I'll:\n• Find new matches based on your experience\n• Tailor your CV for each role\n• Track every application\n\nUse the buttons above to explore!`);
+    showNavButtons();
+  } catch(e){
+    removeTyping();
+    await addBotBubble(`❌ Something went wrong saving your profile. Try refreshing.`);
+  }
+}
+
+function buildLinkedInCard(res){
+  const wrap=document.createElement('div');
+  wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
+  const card=document.createElement('div');
+  card.className='li-card';
+  card.innerHTML='<div class="li-header">💼 LinkedIn Optimizer</div>';
+
+  // Profile score
+  if(res.profile_strength_score){
+    const scoreBar=document.createElement('div');
+    scoreBar.className='ats-bar';
+    const circum=2*Math.PI*16;
+    const offset=circum-(res.profile_strength_score/100)*circum;
+    scoreBar.innerHTML=`
+      <div class="ats-ring">
+        <svg width="44" height="44" viewBox="0 0 44 44">
+          <circle fill="none" stroke="var(--border)" stroke-width="5" cx="22" cy="22" r="16"/>
+          <circle fill="none" stroke="#0a66c2" stroke-width="5" cx="22" cy="22" r="16"
+            stroke-dasharray="${circum}" stroke-dashoffset="${offset}"
+            stroke-linecap="round" style="transform:rotate(-90deg);transform-origin:center"/>
+        </svg>
+        <div class="ats-ring-num" style="color:#0a66c2">${res.profile_strength_score}</div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text)">Profile Strength: ${res.profile_strength_score}/100</div>
+      </div>`;
+    card.appendChild(scoreBar);
+  }
+
+  // Headlines
+  if(res.headline_suggestions?.length){
+    const sec=document.createElement('div');
+    sec.className='li-section';
+    sec.innerHTML='<div class="li-section-title">📝 Headline Suggestions</div>';
+    res.headline_suggestions.forEach(h=>{
+      const row=document.createElement('div');
+      row.className='li-suggestion';
+      row.innerHTML=`<span>${h}</span>`;
+      const cb=document.createElement('button');
+      cb.className='copy-btn';cb.textContent='Copy';
+      cb.onclick=()=>{navigator.clipboard.writeText(h);cb.textContent='Copied!';setTimeout(()=>cb.textContent='Copy',1500)};
+      row.appendChild(cb);
+      sec.appendChild(row);
+    });
+    card.appendChild(sec);
+  }
+
+  // About section
+  if(res.about_section){
+    const sec=document.createElement('div');
+    sec.className='li-section';
+    sec.innerHTML='<div class="li-section-title">👤 About Section Draft</div>';
+    const about=document.createElement('div');
+    about.className='li-about';
+    about.textContent=res.about_section;
+    const cb=document.createElement('button');
+    cb.className='copy-btn';
+    cb.style.cssText='position:absolute;top:6px;right:6px';
+    about.style.position='relative';
+    cb.textContent='Copy';
+    cb.onclick=()=>{navigator.clipboard.writeText(res.about_section);cb.textContent='Copied!';setTimeout(()=>cb.textContent='Copy',1500)};
+    about.appendChild(cb);
+    sec.appendChild(about);
+    card.appendChild(sec);
+  }
+
+  // Experience tips
+  if(res.experience_tips?.length){
+    const sec=document.createElement('div');
+    sec.className='li-section';
+    sec.innerHTML='<div class="li-section-title">💼 Experience Optimization</div>';
+    res.experience_tips.forEach(tip=>{
+      const el=document.createElement('div');
+      el.className='li-exp-tip';
+      el.innerHTML=`<div class="li-exp-role">${tip.role||'Role'}</div>
+        ${tip.current?`<div class="li-exp-current">Current: ${tip.current}</div>`:''}
+        <div class="li-exp-suggested">→ ${tip.suggested}</div>`;
+      sec.appendChild(el);
+    });
+    card.appendChild(sec);
+  }
+
+  // Skills to add
+  if(res.skills_to_add?.length){
+    const sec=document.createElement('div');
+    sec.className='li-section';
+    sec.innerHTML='<div class="li-section-title">🏷️ Skills to Add</div>';
+    const tags=document.createElement('div');
+    tags.className='skill-tags';
+    res.skills_to_add.forEach(s=>{
+      const tag=document.createElement('span');
+      tag.className='skill-tag';tag.style.borderColor='#0a66c2';tag.style.color='#60a5fa';
+      tag.textContent=s;
+      tags.appendChild(tag);
+    });
+    sec.appendChild(tags);
+    card.appendChild(sec);
+  }
+
+  // Section checklist
+  if(res.section_checklist?.length){
+    const sec=document.createElement('div');
+    sec.className='li-section';
+    sec.innerHTML='<div class="li-section-title">✅ Section Checklist</div>';
+    const ul=document.createElement('ul');
+    ul.className='li-checklist';
+    res.section_checklist.forEach((item,i)=>{
+      const li=document.createElement('li');
+      const statusIcon=item.status==='good'?'✅':item.status==='missing'?'❌':'⚠️';
+      const uid=`li-chk-${Date.now()}-${i}`;
+      li.innerHTML=`<span class="li-check" id="${uid}" onclick="this.classList.toggle('checked');this.textContent=this.classList.contains('checked')?'✓':''"></span>
+        ${statusIcon} <strong>${item.section}</strong>: ${item.action}`;
+      ul.appendChild(li);
+    });
+    sec.appendChild(ul);
+    card.appendChild(sec);
+  }
+
+  wrap.appendChild(card);
+  return wrap;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
