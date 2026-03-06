@@ -613,6 +613,51 @@ header{
 }
 .badge-soon{background:rgba(245,158,11,.12);color:var(--warning)}
 .badge-connected{background:var(--tag-bg);color:var(--accent)}
+
+/* ── LinkedIn URL input (onboarding) ──────────────── */
+.li-url-wrap{display:flex;gap:6px;margin-top:8px;align-items:center}
+.li-url-input{
+  flex:1;background:var(--input-bg);border:1px solid var(--border);
+  border-radius:8px;padding:6px 10px;color:var(--text);
+  font-size:12px;outline:none;min-width:0;
+}
+.li-url-input:focus{border-color:var(--accent)}
+.li-url-input::placeholder{color:var(--text-muted)}
+.li-url-save{
+  background:var(--accent);color:#0a0f1e;border:none;
+  border-radius:8px;padding:6px 12px;font-size:11px;font-weight:600;
+  cursor:pointer;white-space:nowrap;
+}
+.li-url-save:hover{background:var(--accent-dim)}
+
+/* ── CV Improvement card ──────────────────────────── */
+.cv-improve-card{
+  background:var(--surface2);border:1px solid var(--accent);
+  border-radius:14px;padding:14px;margin-top:6px;max-width:88%;
+}
+.cv-improve-header{
+  display:flex;align-items:center;gap:8px;
+  font-weight:600;font-size:13px;color:var(--accent);margin-bottom:12px;
+}
+.cv-before-after{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px;margin-bottom:10px;position:relative;
+}
+.cv-before{
+  font-size:12px;color:var(--text-muted);margin-bottom:8px;
+  padding-bottom:8px;border-bottom:1px dashed var(--border);
+}
+.cv-after{font-size:12px;color:var(--text);line-height:1.55}
+.cv-label{
+  font-size:10px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.04em;margin-bottom:4px;
+}
+.cv-label.before{color:var(--text-muted)}
+.cv-label.after{color:var(--accent)}
+.change-tag{
+  display:inline-block;background:rgba(16,217,160,.1);color:var(--accent);
+  padding:2px 7px;border-radius:20px;font-size:10px;margin-right:4px;margin-top:4px;
+}
 </style>
 </head>
 <body>
@@ -838,20 +883,54 @@ async function askConnections(){
         <div class="connection-title">${c.title}</div>
         <div class="connection-desc">${c.desc}</div>
       </div>
-      <span class="connection-badge badge-soon">Coming Soon</span>`;
-    card.onclick=()=>{
-      card.classList.toggle('selected');
-      const badge=card.querySelector('.connection-badge');
-      if(card.classList.contains('selected')){
-        badge.className='connection-badge badge-connected';
-        badge.textContent='✓ Queued';
-        prefs.connections[c.key]=true;
-      } else {
-        badge.className='connection-badge badge-soon';
-        badge.textContent='Coming Soon';
-        delete prefs.connections[c.key];
-      }
-    };
+      <span class="connection-badge badge-soon">${c.key==='linkedin'?'Connect':'Coming Soon'}</span>`;
+
+    if(c.key==='linkedin'){
+      card.onclick=(e)=>{
+        e.stopPropagation();
+        if(card.querySelector('.li-url-input')) return;
+        const badge=card.querySelector('.connection-badge');
+        badge.style.display='none';
+        const inputWrap=document.createElement('div');
+        inputWrap.className='li-url-wrap';
+        inputWrap.innerHTML=`<input type="text" class="li-url-input" placeholder="linkedin.com/in/yourname"/><button class="li-url-save">Save</button>`;
+        card.querySelector('.connection-info').appendChild(inputWrap);
+        card.classList.add('selected');
+        const input=inputWrap.querySelector('.li-url-input');
+        const saveBtn=inputWrap.querySelector('.li-url-save');
+        input.focus();
+        input.onclick=(ev)=>ev.stopPropagation();
+        saveBtn.onclick=(ev)=>{
+          ev.stopPropagation();
+          const url=input.value.trim();
+          if(!url){input.style.borderColor='var(--danger)';return;}
+          let normalized=url;
+          if(!normalized.startsWith('http')) normalized='https://'+normalized;
+          prefs.linkedin_url=normalized;
+          inputWrap.remove();
+          badge.style.display='';
+          badge.className='connection-badge badge-connected';
+          badge.textContent='✓ Connected';
+        };
+        input.addEventListener('keydown',(ev)=>{
+          if(ev.key==='Enter'){ev.preventDefault();saveBtn.click();}
+        });
+      };
+    } else {
+      card.onclick=()=>{
+        card.classList.toggle('selected');
+        const badge=card.querySelector('.connection-badge');
+        if(card.classList.contains('selected')){
+          badge.className='connection-badge badge-connected';
+          badge.textContent='✓ Queued';
+          prefs.connections[c.key]=true;
+        } else {
+          badge.className='connection-badge badge-soon';
+          badge.textContent='Coming Soon';
+          delete prefs.connections[c.key];
+        }
+      };
+    }
     grid.appendChild(card);
   });
 
@@ -950,9 +1029,169 @@ async function showCVScore(d){
   },100);
 
   await sleep(600);
-  await addBotBubble(`Great start, **${d.name||'there'}**! I'll tailor your CV for every role before applying.\n\nSkills I found: ${(d.skills||[]).slice(0,5).map(s=>`\`${s}\``).join(' ')}`);
+  await addBotBubble(`Great start, **${d.name||'there'}**! I can create a detailed improvement plan for your CV, or continue to job search.\n\nSkills I found: ${(d.skills||[]).slice(0,5).map(s=>`\`${s}\``).join(' ')}`);
   await sleep(500);
-  await askLocation();
+  addButtons([
+    ['✨ Improve my CV','improve'],
+    ['Continue →','continue'],
+  ], async (val)=>{
+    if(val==='improve') await showCVImprovement();
+    else await askLocation();
+  });
+}
+
+async function showCVImprovement(){
+  await addBotBubble(`✨ **Generating your personalized CV improvement plan...**`);
+  addTyping();
+  try {
+    const res = await api('/api/cv/improve','POST',{});
+    removeTyping();
+    const card = buildCVImprovementCard(res);
+    addBotRow(card, false);
+
+    await sleep(400);
+    addButtons([['Continue →','continue']], async ()=>{
+      await askLocation();
+    });
+  } catch(e){
+    removeTyping();
+    await addBotBubble(`❌ Couldn't generate improvements right now. Let's continue with your job search!`);
+    await sleep(400);
+    await askLocation();
+  }
+}
+
+function buildCVImprovementCard(res){
+  const wrap=document.createElement('div');
+  wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
+  const card=document.createElement('div');
+  card.className='cv-improve-card';
+  card.innerHTML='<div class="cv-improve-header">✨ CV Improvement Plan</div>';
+
+  // Improved score
+  if(res.improved_score){
+    const origScore=cvData?.cv_score||50;
+    const scoreBar=document.createElement('div');
+    scoreBar.className='ats-bar';
+    const circum=2*Math.PI*16;
+    const offset=circum-(res.improved_score/100)*circum;
+    scoreBar.innerHTML=`
+      <div class="ats-ring">
+        <svg width="44" height="44" viewBox="0 0 44 44">
+          <circle fill="none" stroke="var(--border)" stroke-width="5" cx="22" cy="22" r="16"/>
+          <circle fill="none" stroke="var(--accent)" stroke-width="5" cx="22" cy="22" r="16"
+            stroke-dasharray="${circum}" stroke-dashoffset="${offset}"
+            stroke-linecap="round" style="transform:rotate(-90deg);transform-origin:center"/>
+        </svg>
+        <div class="ats-ring-num">${res.improved_score}</div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text)">Potential Score: ${res.improved_score}/100</div>
+        <div style="font-size:10px;color:var(--text-muted)">Up from ${origScore} — with these improvements</div>
+      </div>`;
+    card.appendChild(scoreBar);
+  }
+
+  // Overall improvement explanation
+  if(res.overall_improvement){
+    const expl=document.createElement('div');
+    expl.style.cssText='font-size:12px;color:var(--text-dim);margin-bottom:12px;line-height:1.5';
+    expl.textContent=res.overall_improvement;
+    card.appendChild(expl);
+  }
+
+  // Summary: before/after
+  if(res.improved_summary){
+    const lbl=document.createElement('div');
+    lbl.className='tailor-section-label';
+    lbl.textContent='Professional Summary';
+    card.appendChild(lbl);
+    const block=document.createElement('div');
+    block.className='cv-before-after';
+    block.innerHTML=`
+      <div class="cv-before">
+        <div class="cv-label before">Current</div>
+        ${res.original_summary||'No summary in current CV'}
+      </div>
+      <div class="cv-after">
+        <div class="cv-label after">Improved</div>
+        ${res.improved_summary}
+      </div>`;
+    const cb=document.createElement('button');
+    cb.className='copy-btn';cb.style.cssText='position:absolute;top:6px;right:6px';
+    cb.textContent='Copy';
+    cb.onclick=()=>{navigator.clipboard.writeText(res.improved_summary);cb.textContent='Copied!';setTimeout(()=>cb.textContent='Copy',1500)};
+    block.appendChild(cb);
+    card.appendChild(block);
+  }
+
+  // Rewritten experience
+  if(res.rewritten_experience?.length){
+    const lbl=document.createElement('div');
+    lbl.className='tailor-section-label';
+    lbl.style.marginTop='10px';
+    lbl.textContent='Experience Improvements';
+    card.appendChild(lbl);
+    res.rewritten_experience.forEach(exp=>{
+      const block=document.createElement('div');
+      block.className='cv-before-after';
+      block.innerHTML=`
+        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px">${exp.title||''} at ${exp.company||''}</div>
+        <div class="cv-before">
+          <div class="cv-label before">Current</div>
+          ${exp.original||'No description'}
+        </div>
+        <div class="cv-after">
+          <div class="cv-label after">Improved</div>
+          ${exp.improved||''}
+        </div>
+        <div style="margin-top:6px">${(exp.changes||[]).map(c=>`<span class="change-tag">${c}</span>`).join('')}</div>`;
+      const cb2=document.createElement('button');
+      cb2.className='copy-btn';cb2.style.cssText='position:absolute;top:6px;right:6px';
+      cb2.textContent='Copy';
+      cb2.onclick=()=>{navigator.clipboard.writeText(exp.improved||'');cb2.textContent='Copied!';setTimeout(()=>cb2.textContent='Copy',1500)};
+      block.appendChild(cb2);
+      card.appendChild(block);
+    });
+  }
+
+  // Skills to add
+  if(res.skills_to_add?.length){
+    const lbl=document.createElement('div');
+    lbl.className='tailor-section-label';
+    lbl.style.marginTop='10px';
+    lbl.textContent='Skills to Add';
+    card.appendChild(lbl);
+    const tags=document.createElement('div');
+    tags.className='skill-tags';
+    res.skills_to_add.forEach(s=>{
+      const tag=document.createElement('span');
+      tag.className='skill-tag';
+      tag.textContent=s;
+      tags.appendChild(tag);
+    });
+    card.appendChild(tags);
+  }
+
+  // Formatting tips
+  if(res.formatting_tips?.length){
+    const lbl=document.createElement('div');
+    lbl.className='tailor-section-label';
+    lbl.style.marginTop='10px';
+    lbl.textContent='Formatting Tips';
+    card.appendChild(lbl);
+    const ul=document.createElement('ul');
+    ul.className='cover-points';
+    res.formatting_tips.forEach(tip=>{
+      const li=document.createElement('li');
+      li.textContent=tip;
+      ul.appendChild(li);
+    });
+    card.appendChild(ul);
+  }
+
+  wrap.appendChild(card);
+  return wrap;
 }
 
 async function askRole(){
@@ -2113,7 +2352,7 @@ async function showLinkedInOnboarding(){
   await addBotBubble(`💼 **Let me optimize your LinkedIn for ATS...**\n\nThis helps recruiters find you faster.`);
   addTyping();
   try {
-    const res = await api('/api/linkedin/optimize','POST',{});
+    const res = await api('/api/linkedin/optimize','POST',{linkedin_url: prefs.linkedin_url || null});
     removeTyping();
     const card = buildLinkedInCard(res);
     addBotRow(card, false);
@@ -2146,6 +2385,7 @@ async function confirmAndComplete(){
       industries: ['any'],
       company_sizes: ['any'],
       employment_types: ['any'],
+      linkedin_url: prefs.linkedin_url || null,
     });
     removeTyping();
     phase = PHASES.ACTIVE;

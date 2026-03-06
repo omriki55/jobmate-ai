@@ -60,6 +60,7 @@ class UserPreferences(Base):
     match_threshold = Column(Integer, default=50)
     daily_apply_limit = Column(Integer, default=10)
     blocklist = Column(JSON, default=list)       # blocked companies
+    linkedin_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 

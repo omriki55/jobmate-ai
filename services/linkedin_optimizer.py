@@ -26,7 +26,7 @@ Years of experience: {total_years_experience}
 Skills: {skills}
 Summary: {summary}
 Target Roles: {target_roles}
-
+{linkedin_line}
 ## Experience
 {experience}
 
@@ -70,6 +70,7 @@ Rules:
 async def generate_linkedin_optimization(
     cv_data: dict[str, Any],
     target_roles: list[str] | None = None,
+    linkedin_url: str | None = None,
 ) -> dict[str, Any]:
     """Generate a LinkedIn optimization guide from CV data."""
     target_roles = target_roles or []
@@ -90,6 +91,8 @@ async def generate_linkedin_optimization(
                 f"{(exp.get('description', '') or '')[:200]}"
             )
 
+        linkedin_line = f"LinkedIn Profile: {linkedin_url}\n" if linkedin_url else ""
+
         prompt = LINKEDIN_PROMPT.format(
             name=cv_data.get("name", "Candidate"),
             primary_domain=cv_data.get("primary_domain", "professional"),
@@ -98,6 +101,7 @@ async def generate_linkedin_optimization(
             skills=", ".join(cv_data.get("skills", [])[:15]),
             summary=(cv_data.get("summary", "") or "")[:300],
             target_roles=", ".join(target_roles) if target_roles else "Not specified",
+            linkedin_line=linkedin_line,
             experience="\n".join(exp_lines) if exp_lines else "No experience data available",
         )
 

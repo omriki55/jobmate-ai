@@ -45,6 +45,7 @@ from db.models import (
 from services.coach import get_coaching_message
 from services.company_research import research_company
 from services.cv_export import generate_tailored_cv_docx
+from services.cv_improver import generate_cv_improvement
 from services.cv_parser import process_cv
 from services.cv_tailor import tailor_cv_for_job
 from services.headhunter_finder import find_headhunters
@@ -235,6 +236,7 @@ class PreferencesBody(BaseModel):
     industries: list[str]
     company_sizes: list[str]
     employment_types: list[str]
+    linkedin_url: Optional[str] = None
 
 
 class ApplyBody(BaseModel):
@@ -284,6 +286,10 @@ class HeadhunterBody(BaseModel):
 
 class CoachBody(BaseModel):
     message: str = ""
+
+
+class LinkedInOptimizeBody(BaseModel):
+    linkedin_url: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +425,31 @@ async def tailor_cv(
 
 
 # ---------------------------------------------------------------------------
+# Routes — CV improvement
+# ---------------------------------------------------------------------------
+
+@app.post("/api/cv/improve")
+@limiter.limit("5/minute")
+async def improve_cv(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """Generate detailed CV improvement suggestions."""
+    async with AsyncSessionLocal() as db:
+        cv_res = await db.execute(
+            select(CV).where(CV.user_id == user.id, CV.is_active == True)
+        )
+        cv = cv_res.scalar_one_or_none()
+        cv_data: dict = cv.parsed_data if cv and cv.parsed_data else {}
+
+    if not cv_data:
+        raise HTTPException(status_code=404, detail="No CV found. Please upload a CV first.")
+
+    result = await generate_cv_improvement(cv_data)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Routes — preferences
 # ---------------------------------------------------------------------------
 
@@ -443,6 +474,7 @@ async def save_preferences(
             industries=body.industries,
             company_sizes=body.company_sizes,
             employment_types=body.employment_types,
+            linkedin_url=body.linkedin_url,
         )
         if prefs:
             for k, v in fields.items():
@@ -1082,6 +1114,7 @@ async def coaching(
 @limiter.limit("10/minute")
 async def optimize_linkedin(
     request: Request,
+    body: LinkedInOptimizeBody = LinkedInOptimizeBody(),
     user: User = Depends(get_current_user),
 ):
     async with AsyncSessionLocal() as db:
@@ -1096,8 +1129,9 @@ async def optimize_linkedin(
         )
         prefs = pref_res.scalar_one_or_none()
         target_roles = prefs.target_roles if prefs else []
+        linkedin_url = body.linkedin_url or (prefs.linkedin_url if prefs else None)
 
-    result = await generate_linkedin_optimization(cv_data, target_roles)
+    result = await generate_linkedin_optimization(cv_data, target_roles, linkedin_url=linkedin_url)
     return result
 
 
