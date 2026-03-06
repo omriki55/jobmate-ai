@@ -878,6 +878,60 @@ header{
 #scroll-to-bottom:hover{opacity:.8}
 /* Applied button state */
 .job-apply.applied{background:var(--success);opacity:1;pointer-events:none}
+
+/* ── Skeleton loading cards ─────────────────────────── */
+@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+.skeleton-card{
+  background:#ffffff;border:1px solid var(--border);
+  border-radius:14px;padding:14px;margin-top:8px;max-width:88%;
+}
+.skeleton-line{
+  height:12px;border-radius:6px;margin-bottom:8px;
+  background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);
+  background-size:800px 100%;animation:shimmer 1.5s infinite linear;
+}
+.skeleton-line:last-child{margin-bottom:0}
+.skeleton-line.w60{width:60%}
+.skeleton-line.w80{width:80%}
+.skeleton-line.w40{width:40%}
+.skeleton-line.thick{height:18px}
+
+/* ── Error card ─────────────────────────────────────── */
+.error-card{
+  background:#ffffff;border:1px solid var(--danger);
+  border-left:4px solid var(--danger);border-radius:12px;
+  padding:12px 14px;margin-top:6px;max-width:88%;
+  display:flex;align-items:flex-start;gap:10px;
+}
+.error-icon{font-size:16px;flex-shrink:0;line-height:1.4}
+.error-body{flex:1;min-width:0}
+.error-msg{font-size:13px;color:var(--text);line-height:1.5}
+.error-retry{
+  background:transparent;border:1px solid var(--danger);color:var(--danger);
+  border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;
+  cursor:pointer;margin-top:8px;transition:.15s;
+}
+.error-retry:hover{background:rgba(239,68,68,.08)}
+
+/* ── File upload chip ───────────────────────────────── */
+#attach-btn{
+  background:transparent;border:none;color:var(--text-muted);
+  font-size:20px;cursor:pointer;flex-shrink:0;padding:4px;
+  display:flex;align-items:center;transition:color .15s;
+}
+#attach-btn:hover{color:var(--accent)}
+.file-chip{
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--tag-bg);color:var(--accent);
+  padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;
+  margin-bottom:4px;
+}
+.file-chip-remove{
+  background:none;border:none;color:var(--accent);
+  cursor:pointer;font-size:13px;font-weight:700;padding:0;line-height:1;
+}
+.file-chip-remove:hover{color:var(--danger)}
+
 /* Mobile responsive */
 @media(max-width:600px){
   #app{max-width:100%;border:none}
@@ -938,6 +992,7 @@ header{
   <!-- Input -->
   <div id="input-area">
     <input type="file" id="file-input" accept=".pdf,.docx,.txt"/>
+    <button id="attach-btn" onclick="document.getElementById('file-input').click()" title="Attach CV file">📎</button>
     <input type="text" id="msg-input" placeholder="Type a message..." autocomplete="off"/>
     <button id="send-btn" onclick="handleSend()">↑</button>
   </div>
@@ -998,7 +1053,6 @@ function removeProgress(){
 const $msgs = document.getElementById('messages');
 const $input = document.getElementById('msg-input');
 const $send = document.getElementById('send-btn');
-const $fileInput = document.getElementById('file-input');
 const $nav = document.getElementById('nav-btns');
 
 function scrollBottom(){ $msgs.scrollTop = $msgs.scrollHeight; }
@@ -1101,7 +1155,71 @@ function addTyping(){
   row.appendChild(av); row.appendChild(b);
   $msgs.appendChild(row); scrollBottom();
 }
-function removeTyping(){ document.getElementById('typing-row')?.remove(); }
+function removeTyping(){ document.getElementById('typing-row')?.remove(); removeSkeleton(); }
+
+/* ── Skeleton loading cards ─────────────────────────── */
+function addSkeleton(lines=3){
+  const card = document.createElement('div');
+  card.className='skeleton-card';
+  card.id='skeleton-loader';
+  const widths=['w80','w60','w40','w80'];
+  for(let i=0;i<lines;i++){
+    const ln=document.createElement('div');
+    ln.className='skeleton-line '+(i===0?'thick ':'')+widths[i%widths.length];
+    card.appendChild(ln);
+  }
+  const row=addBotRow(card,true);
+  row.id='skeleton-row';
+  scrollBottom();
+  return row;
+}
+function removeSkeleton(){ document.getElementById('skeleton-row')?.remove(); }
+
+/* ── Error card utility ─────────────────────────────── */
+function showError(msg, retryFn){
+  const card=document.createElement('div');
+  card.className='error-card';
+  card.innerHTML=`<span class="error-icon">⚠️</span><div class="error-body"><div class="error-msg">${msg}</div></div>`;
+  if(retryFn){
+    const btn=document.createElement('button');
+    btn.className='error-retry';
+    btn.textContent='Retry';
+    btn.onclick=()=>{ card.closest('.msg-row')?.remove(); retryFn(); };
+    card.querySelector('.error-body').appendChild(btn);
+  }
+  addBotRow(card,true);
+  scrollBottom();
+}
+
+/* ── File chip (attach UX) ──────────────────────────── */
+let pendingFile=null;
+const $fileInput=document.getElementById('file-input');
+const $attachBtn=document.getElementById('attach-btn');
+$fileInput.addEventListener('change',()=>{
+  const f=$fileInput.files[0];
+  if(!f) return;
+  if(phase===PHASES.AWAITING_CV){
+    handleFile(f);
+    $fileInput.value='';
+    return;
+  }
+  pendingFile=f;
+  showFileChip(f.name);
+});
+function showFileChip(name){
+  removeFileChip();
+  const chip=document.createElement('div');
+  chip.className='file-chip';
+  chip.id='file-chip';
+  chip.innerHTML=`📄 ${name.length>25?name.slice(0,22)+'…':name} <button class="file-chip-remove" onclick="removeFileChip()">×</button>`;
+  const area=document.getElementById('input-area');
+  area.insertBefore(chip,area.firstChild);
+}
+function removeFileChip(){
+  document.getElementById('file-chip')?.remove();
+  pendingFile=null;
+  $fileInput.value='';
+}
 
 function setInputEnabled(enabled){
   $input.disabled = !enabled;
@@ -1298,7 +1416,6 @@ function buildDropZone(){
   dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag')};
   dz.ondragleave=()=>dz.classList.remove('drag');
   dz.ondrop=e=>{e.preventDefault();dz.classList.remove('drag');handleFile(e.dataTransfer.files[0])};
-  $fileInput.onchange=()=>handleFile($fileInput.files[0]);
   return dz;
 }
 
@@ -1322,7 +1439,7 @@ async function handleFile(file){
     await showCVScore(cvData);
   } catch(e) {
     removeTyping();
-    await addBotBubble(`❌ Couldn't read that file. Try a PDF or DOCX.`);
+    showError(`Couldn't read that file. Try a PDF or DOCX.`);
     phase = PHASES.AWAITING_CV;
     await askForCV();
   }
@@ -1521,7 +1638,7 @@ async function showCVImprovement(){
     });
   } catch(e){
     removeTyping();
-    await addBotBubble(`❌ Couldn't generate improvements right now. Let's continue with your job search!`);
+    showError(`Couldn't generate improvements right now. Let's continue with your job search!`);
     await sleep(400);
     await confirmDetectedRoles();
   }
@@ -1921,7 +2038,7 @@ async function confirmPrefs(){
     await showMatches();
   } catch(e) {
     removeTyping();
-    await addBotBubble(`❌ Something went wrong saving your preferences. Try again.`);
+    showError(`Something went wrong saving your preferences. Try again.`);
   }
 }
 
@@ -1986,7 +2103,7 @@ function showMainMenu(){
 
 async function showMatches(){
   if(phase!==PHASES.ACTIVE) return;
-  addTyping();
+  addSkeleton(4);
   try {
     const data = await api('/api/matches');
     removeTyping();
@@ -2027,7 +2144,7 @@ async function showMatches(){
     addBotRow(wrap, false);
   } catch(e) {
     removeTyping();
-    await addBotBubble(`❌ Couldn't load matches. Make sure your profile is set up.`);
+    showError(`Couldn't load matches. Make sure your profile is set up.`);
   }
 }
 
@@ -2082,7 +2199,7 @@ async function applyOne(jobId, btn){
     btn.disabled = false;
     if(skipBtn) skipBtn.disabled = false;
     btn.textContent = '✅ Apply';
-    await addBotBubble(`❌ Something went wrong. Try again.`);
+    showError(`Something went wrong. Try again.`);
   }
 }
 
@@ -2266,7 +2383,7 @@ function buildTailorCard(res){
 }
 
 async function downloadCV(jobId){
-  if(!jobId){ await addBotBubble('❌ Cannot identify job for download.'); return; }
+  if(!jobId){ showError('Cannot identify job for download.'); return; }
   // Use fetch with auth header for file download
   try {
     const hdrs = {};
@@ -2280,11 +2397,11 @@ async function downloadCV(jobId){
     a.download = r.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g,'') || 'CV.docx';
     a.click();
     URL.revokeObjectURL(url);
-  } catch(e) { await addBotBubble('❌ CV export failed. Try again.'); }
+  } catch(e) { showError('CV export failed. Try again.'); }
 }
 
 async function showInterviewPrep(jobId, btn){
-  if(!jobId){ await addBotBubble('❌ Cannot identify job for prep.'); return; }
+  if(!jobId){ showError('Cannot identify job for prep.'); return; }
   if(btn){ btn.disabled=true; btn.textContent='⏳ Generating…'; }
   try {
     const res = await api('/api/interview/prep','POST',{job_id:Number(jobId)});
@@ -2300,7 +2417,7 @@ async function showInterviewPrep(jobId, btn){
     addBotRow(wrap, false);
   } catch(e){
     if(btn){ btn.disabled=false; btn.textContent='🎯 Interview Prep'; }
-    await addBotBubble('❌ Couldn\'t generate prep questions. Try again.');
+    showError('Couldn\'t generate prep questions. Try again.');
   }
 }
 
@@ -2369,7 +2486,7 @@ async function applyToAll(){
 
 async function showPipeline(){
   if(phase!==PHASES.ACTIVE) return;
-  addTyping();
+  addSkeleton(3);
   const data = await api('/api/pipeline');
   removeTyping();
   const apps = data.applications||[];
@@ -2410,7 +2527,7 @@ async function showPipeline(){
         setTimeout(()=>sel.style.borderColor='',1500);
       } catch(e) {
         sel.value = app.status; // revert
-        await addBotBubble('❌ Failed to update status.');
+        showError('Failed to update status.');
       }
     };
     card.appendChild(sel);
@@ -2439,7 +2556,7 @@ async function showPipeline(){
 
 async function showDashboard(){
   if(phase!==PHASES.ACTIVE) return;
-  addTyping();
+  addSkeleton(4);
   try {
     const d = await api('/api/dashboard');
     removeTyping();
@@ -2520,13 +2637,13 @@ async function showDashboard(){
     });
   } catch(e) {
     removeTyping();
-    await addBotBubble('❌ Couldn\'t load dashboard. Try again.');
+    showError('Couldn\'t load dashboard. Try again.');
   }
 }
 
 async function showStats(){
   if(phase!==PHASES.ACTIVE) return;
-  addTyping();
+  addSkeleton(3);
   const d = await api('/api/stats');
   removeTyping();
   await addBotBubble(`📈 **Your Job Search Stats**`);
@@ -2566,7 +2683,7 @@ async function doJobSearch(){
   if(!q) return;
   const keywords=q.split(/[,\s]+/).filter(Boolean);
   addUserBubble(`🔎 ${q}`);
-  addTyping();
+  addSkeleton(4);
   try {
     const res=await api('/api/jobs/search','POST',{keywords,limit:8});
     removeTyping();
@@ -2586,7 +2703,7 @@ async function doJobSearch(){
     addBotRow(wrap,false);
   } catch(e){
     removeTyping();
-    await addBotBubble('❌ Search failed. Try again.');
+    showError('Search failed. Try again.');
   }
 }
 
@@ -2596,7 +2713,7 @@ async function doJobSearch(){
 let currentSim = null; // {sim_id, questions, job, currentIndex}
 
 async function startInterviewSim(jobId, btn, interviewType){
-  if(!jobId){ await addBotBubble('❌ Cannot identify job.'); return; }
+  if(!jobId){ showError('Cannot identify job.'); return; }
   if(btn){ btn.disabled=true; btn.textContent='⏳ Preparing...'; }
   try {
     const body = {job_id:Number(jobId)};
@@ -2631,7 +2748,7 @@ async function startInterviewSim(jobId, btn, interviewType){
     showSimQuestion(0);
   } catch(e) {
     if(btn){ btn.disabled=false; btn.textContent='🎙️ Mock Interview'; }
-    await addBotBubble('❌ Couldn\'t start simulation. Try again.');
+    showError('Couldn\'t start simulation. Try again.');
   }
 }
 
@@ -2731,7 +2848,7 @@ async function submitSimAnswer(idx){
     btn.disabled=false;
     btn.textContent='Submit Answer →';
     textarea.disabled=false;
-    await addBotBubble('❌ Failed to evaluate. Try again.');
+    showError('Failed to evaluate. Try again.');
   }
 }
 
@@ -2740,7 +2857,7 @@ async function submitSimAnswer(idx){
 // ─────────────────────────────────────────────────────────────────────────────
 async function showHeadhunters(){
   if(phase!==PHASES.ACTIVE) return;
-  addTyping();
+  addSkeleton(4);
   try {
     const res=await api('/api/headhunters/find','POST',{});
     removeTyping();
@@ -2821,7 +2938,7 @@ async function showHeadhunters(){
     addBotRow(wrap,false);
   } catch(e) {
     removeTyping();
-    await addBotBubble('❌ Couldn\'t generate recruiter strategies. Try again.');
+    showError('Couldn\'t generate recruiter strategies. Try again.');
   }
 }
 
@@ -2830,7 +2947,7 @@ async function showHeadhunters(){
 // ─────────────────────────────────────────────────────────────────────────────
 async function showCoach(message=''){
   if(phase!==PHASES.ACTIVE) return;
-  addTyping();
+  addSkeleton(3);
   try {
     const res=await api('/api/coach','POST',{message});
     removeTyping();
@@ -2865,7 +2982,7 @@ async function showCoach(message=''){
     await addBotBubble('Want to talk more? Type how you\'re feeling, or use the buttons above.', {avatar:false});
   } catch(e) {
     removeTyping();
-    await addBotBubble('❌ Couldn\'t reach the coach. Try again.');
+    showError('Couldn\'t reach the coach. Try again.');
   }
 }
 
@@ -2898,7 +3015,7 @@ async function showLinkedInOptimize(){
       addBotRow(card, false);
     } catch(e) {
       removeTyping();
-      await addBotBubble('❌ Couldn\'t analyze LinkedIn profile. Make sure you\'ve uploaded a CV first.');
+      showError('Couldn\'t analyze LinkedIn profile. Make sure you\'ve uploaded a CV first.');
     }
   } else {
     // No URL stored: show URL input
@@ -2920,7 +3037,7 @@ async function showLinkedInOptimize(){
         addBotRow(card, false);
       } catch(e) {
         removeTyping();
-        await addBotBubble('❌ Couldn\'t analyze LinkedIn profile. Make sure you\'ve uploaded a CV first.');
+        showError('Couldn\'t analyze LinkedIn profile. Make sure you\'ve uploaded a CV first.');
       }
     });
   }
@@ -2972,7 +3089,7 @@ function showLinkedInUrlInput(callback){
 // ─────────────────────────────────────────────────────────────────────────────
 async function showEmailTemplates(jobTitle='', company='', templateType='application'){
   if(phase!==PHASES.ACTIVE) return;
-  addTyping();
+  addSkeleton(4);
   try {
     const res=await api('/api/email/templates','POST',{
       job_title: jobTitle, company: company, template_type: templateType
@@ -2983,7 +3100,7 @@ async function showEmailTemplates(jobTitle='', company='', templateType='applica
     addBotRow(card, false);
   } catch(e) {
     removeTyping();
-    await addBotBubble('❌ Couldn\'t generate email templates. Make sure you\'ve uploaded a CV first.');
+    showError('Couldn\'t generate email templates. Make sure you\'ve uploaded a CV first.');
   }
 }
 
@@ -3080,7 +3197,7 @@ function buildEmailCard(res){
 // ─────────────────────────────────────────────────────────────────────────────
 async function showCalendarAdvice(jobTitle='', company='', interviewDate=''){
   if(phase!==PHASES.ACTIVE) return;
-  addTyping();
+  addSkeleton(4);
   try {
     const res=await api('/api/calendar/advice','POST',{
       job_title: jobTitle, company: company, interview_date: interviewDate||null
@@ -3091,7 +3208,7 @@ async function showCalendarAdvice(jobTitle='', company='', interviewDate=''){
     addBotRow(card, false);
   } catch(e) {
     removeTyping();
-    await addBotBubble('❌ Couldn\'t generate calendar advice. Make sure you\'ve uploaded a CV first.');
+    showError('Couldn\'t generate calendar advice. Make sure you\'ve uploaded a CV first.');
   }
 }
 
@@ -3198,7 +3315,7 @@ function buildCalendarCard(res){
 // ─────────────────────────────────────────────────────────────────────────────
 async function searchJobsByKeywords(keywords){
   await addBotBubble(`🔍 **Searching for jobs...**`);
-  addTyping();
+  addSkeleton(4);
 
   if(!keywords || !keywords.length){
     keywords = (prefs.target_roles||[]).slice(0,3);
@@ -3484,7 +3601,7 @@ function showInterviewTypeSelector(jobId, triggerBtn){
 // Cover letter
 // ─────────────────────────────────────────────────────────────────────────────
 async function showCoverLetter(jobId, btn){
-  if(!jobId){ await addBotBubble('❌ Pick a job first.'); return; }
+  if(!jobId){ showError('Pick a job first.'); return; }
   if(btn){ btn.disabled=true; btn.textContent='⏳ Writing…'; }
   try {
     const res = await api('/api/cover-letter/generate','POST',{job_id:Number(jobId)});
@@ -3534,7 +3651,7 @@ async function showCoverLetter(jobId, btn){
         a.download=r.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g,'')||'Cover_Letter.docx';
         a.click();
         URL.revokeObjectURL(url);
-      } catch(e){ await addBotBubble('❌ Cover letter export failed.'); }
+      } catch(e){ showError('Cover letter export failed.'); }
     };
     card.appendChild(dlBtn);
 
@@ -3542,7 +3659,7 @@ async function showCoverLetter(jobId, btn){
     addBotRow(wrap, true);
   } catch(e){
     if(btn){ btn.disabled=false; btn.textContent='📝 Cover Letter'; }
-    await addBotBubble('❌ Cover letter generation failed. Try again.');
+    showError('Cover letter generation failed. Try again.');
   }
 }
 
@@ -3550,8 +3667,8 @@ async function showCoverLetter(jobId, btn){
 // Company reviews
 // ─────────────────────────────────────────────────────────────────────────────
 async function showCompanyReviews(company, jobId){
-  if(!company){ await addBotBubble('❌ No company name provided.'); return; }
-  addTyping();
+  if(!company){ showError('No company name provided.'); return; }
+  addSkeleton(4);
   try {
     const body = {company_name: company};
     if(jobId) body.job_id = Number(jobId);
@@ -3637,7 +3754,7 @@ async function showCompanyReviews(company, jobId){
     addBotRow(wrap, true);
   } catch(e){
     removeTyping();
-    await addBotBubble('❌ Could not load company reviews. Try again.');
+    showError('Could not load company reviews. Try again.');
   }
 }
 
@@ -3775,7 +3892,7 @@ async function refreshJobs(){
   } catch(e) {
     if(dot) dot.classList.remove('loading');
     if(txt) txt.textContent = 'refresh failed';
-    await addBotBubble(`❌ Couldn't refresh jobs right now. The external APIs may be temporarily unavailable. Try again in a moment.`);
+    showError(`Couldn't refresh jobs right now. The external APIs may be temporarily unavailable. Try again in a moment.`);
   } finally {
     btn.disabled = false;
     btn.classList.remove('loading');
