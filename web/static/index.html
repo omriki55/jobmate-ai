@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>JobMate AI</title>
+<title>Donald — Career Advisor</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -857,9 +857,9 @@ header{
 
   <!-- Header -->
   <header>
-    <div class="avatar">J</div>
+    <div class="avatar">D</div>
     <div class="header-info">
-      <div class="header-name">JobMate AI</div>
+      <div class="header-name">Donald</div>
       <div class="header-status" id="status-line">
         ● online
         <span class="jobs-count" id="jobs-count-badge">
@@ -927,7 +927,7 @@ function addBotRow(contentEl, showAvatar=true){
   row.className = 'msg-row bot';
   const av = document.createElement('div');
   av.className = `msg-avatar${showAvatar?'':' hidden'}`;
-  av.textContent = 'J';
+  av.textContent = 'D';
   row.appendChild(av);
   row.appendChild(contentEl);
   $msgs.appendChild(row);
@@ -997,7 +997,7 @@ function addTyping(){
   const row = document.createElement('div');
   row.className = 'msg-row bot'; row.id = 'typing-row';
   const av = document.createElement('div');
-  av.className = 'msg-avatar'; av.textContent='J';
+  av.className = 'msg-avatar'; av.textContent='D';
   const b = document.createElement('div');
   b.className='bubble bot-bubble';
   b.innerHTML='<div class="typing-bubble"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
@@ -1046,7 +1046,7 @@ async function boot(){
   }
   localStorage.setItem('jm_last_visit', '0'); // reset for new onboarding
   // Fresh user — go straight to CV upload, then LinkedIn
-  await addBotBubble(`👋 Welcome to **JobMate AI** — your AI career companion.\n\nI'll help you:\n• Tailor your CV for every role\n• Match and apply to jobs early\n• Track every application\n• Prep you for interviews\n• Optimize your LinkedIn for ATS\n\nLet's get you hired. 🎯`, {delay:300});
+  await addBotBubble(`👋 Hey! I'm **Donald**, your personal career advisor.\n\nI'm here to help you land your next role:\n• Improve your CV and LinkedIn\n• Find and match you with jobs\n• Prep you for every interview stage\n• Track your applications\n• Support you emotionally through the process\n\nJust chat with me like you would with a mentor. Let's do this! 🎯`, {delay:300});
   await sleep(600);
   await askForCV();
 }
@@ -3282,41 +3282,63 @@ function buildLinkedInCard(res){
 // ─────────────────────────────────────────────────────────────────────────────
 // Input routing
 // ─────────────────────────────────────────────────────────────────────────────
+// Chat history for Donald conversation context
+let chatHistory = [];
+
 async function handleSend(){
   const text = $input.value.trim();
   if(!text) return;
   $input.value='';
+
+  // Onboarding phases still use direct handlers
   if(phase===PHASES.AWAITING_ROLE)  { await handleRoleInput(text);   return; }
   if(phase===PHASES.AWAITING_SALARY){ await handleSalaryInput(text); return; }
-  if(phase===PHASES.ACTIVE){
-    addUserBubble(text);
-    const low=text.toLowerCase();
-    if(low.includes('match'))      { await showMatches();  return; }
-    if(low.includes('pipeline'))   { await showPipeline(); return; }
-    if(low.includes('dashboard'))  { await showDashboard(); return; }
-    if(low.includes('stat'))       { await showStats();    return; }
-    if(low.includes('search'))     { showSearchBar(); return; }
-    if(low.includes('recruit') || low.includes('headhunt')) { await showHeadhunters(); return; }
-    if(low.includes('linkedin'))   { await showLinkedInOptimize(); return; }
-    if(low.includes('email') || low.includes('template')) { await showEmailTemplates(); return; }
-    if(low.includes('calendar') || low.includes('schedule') || low.includes('interview prep')) { await showCalendarAdvice(); return; }
-    if(low.includes('coach') || low.includes('support') || low.includes('feel')) { await showCoach(text); return; }
 
-    // If search-input exists, auto-search
-    const searchInput = document.getElementById('search-input');
-    if(searchInput){
-      searchInput.value = text;
-      await doJobSearch();
-      return;
+  // Everything else goes through Donald
+  addUserBubble(text);
+  chatHistory.push({role:'user', content:text});
+  addTyping();
+
+  try {
+    const res = await api('/api/chat','POST',{
+      message: text,
+      history: chatHistory.slice(-10),
+    });
+    removeTyping();
+
+    // Render Donald's message
+    if(res.message){
+      await addBotBubble(res.message);
+      chatHistory.push({role:'assistant', content:res.message});
     }
 
-    // Default: send to coach if it seems emotional, else show help
-    if(low.match(/sad|tired|frustrated|rejected|discourag|anxious|stress|scared|worried|hopeless|overwhelm/)){
-      await showCoach(text);
-    } else {
-      await addBotBubble(`I heard you! Try:\n• **matches** — browse job matches\n• **dashboard** — overview & pipeline\n• **search** — keyword job search\n• **coach** — emotional support\n• **linkedin** — profile tips\n• **email** — email templates\n• **schedule** — job search schedule\n• **recruiters** — find headhunters`);
+    // Execute action if Donald triggered one
+    if(res.action){
+      await executeDonaldAction(res.action, res.action_arg);
     }
+  } catch(e){
+    removeTyping();
+    await addBotBubble("Sorry, I'm having a moment. Try again?");
   }
+}
+
+async function executeDonaldAction(action, arg){
+  const actions = {
+    improve_cv:    ()=> showCVImprovement(),
+    linkedin:      ()=> showLinkedInOptimize(),
+    matches:       ()=> showMatches(),
+    search_jobs:   ()=> { if(arg){ showSearchBar(); setTimeout(async()=>{ const si=document.getElementById('search-input'); if(si){si.value=arg; await doJobSearch();} },300); } else showSearchBar(); },
+    dashboard:     ()=> showDashboard(),
+    pipeline:      ()=> showPipeline(),
+    coach:         ()=> showCoach(),
+    email_templates:()=> showEmailTemplates(),
+    interview_prep:()=> showCalendarAdvice(),
+    headhunters:   ()=> showHeadhunters(),
+    calendar:      ()=> showCalendarAdvice(),
+    refresh_jobs:  ()=> refreshJobs(),
+  };
+  const fn = actions[action];
+  if(fn) await fn();
 }
 
 $input.addEventListener('keydown', e=>{

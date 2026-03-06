@@ -57,6 +57,7 @@ from services.job_scraper import scrape_and_store, get_total_job_count
 from services.linkedin_optimizer import generate_linkedin_optimization
 from services.email_templates import generate_email_templates
 from services.calendar_manager import generate_calendar_advice
+from services.donald import chat_with_donald
 from web.auth import create_token, get_current_user
 
 # ---------------------------------------------------------------------------
@@ -315,6 +316,11 @@ class ExportImprovedBody(BaseModel):
     skills_to_add: list[str] = []
 
 
+class ChatBody(BaseModel):
+    message: str
+    history: list[dict] = []
+
+
 # ---------------------------------------------------------------------------
 # Routes — static
 # ---------------------------------------------------------------------------
@@ -360,6 +366,77 @@ async def init_session(body: SessionInitBody, request: Request):
 
     token = create_token(user.id)
     return {"token": token, "state": user.state, "streak": user.streak_days}
+
+
+# ---------------------------------------------------------------------------
+# Routes — Donald chat
+# ---------------------------------------------------------------------------
+
+@app.post("/api/chat")
+@limiter.limit("20/minute")
+async def chat_endpoint(
+    request: Request,
+    body: ChatBody,
+    user: User = Depends(get_current_user),
+):
+    """Conversational chat with Donald — the AI career advisor."""
+    async with AsyncSessionLocal() as db:
+        # Load CV
+        cv_res = await db.execute(
+            select(CV).where(CV.user_id == user.id, CV.is_active == True)
+        )
+        cv = cv_res.scalar_one_or_none()
+        cv_data = cv.parsed_data if cv and cv.parsed_data else None
+
+        # Load preferences
+        pref_res = await db.execute(
+            select(UserPreferences).where(UserPreferences.user_id == user.id)
+        )
+        prefs_row = pref_res.scalar_one_or_none()
+        prefs = None
+        if prefs_row:
+            prefs = {
+                "target_roles": prefs_row.target_roles or [],
+                "locations": prefs_row.locations or [],
+            }
+
+        # Load stats
+        from sqlalchemy import func as sa_func
+        app_res = await db.execute(
+            select(
+                sa_func.count(Application.id),
+                sa_func.count(Application.id).filter(Application.status == "interview"),
+                sa_func.count(Application.id).filter(Application.status == "rejected"),
+            ).where(Application.user_id == user.id)
+        )
+        row = app_res.one()
+        total_apps = row[0] or 0
+        interviews = row[1] or 0
+        rejections = row[2] or 0
+        resp_count_res = await db.execute(
+            select(sa_func.count(Application.id)).where(
+                Application.user_id == user.id,
+                Application.status.notin_(["applied"]),
+            )
+        )
+        responded = resp_count_res.scalar() or 0
+
+    stats = {
+        "total_apps": total_apps,
+        "response_rate": round(responded / total_apps * 100) if total_apps else 0,
+        "interviews": interviews,
+        "rejections": rejections,
+        "streak": user.streak_days or 0,
+    }
+
+    result = await chat_with_donald(
+        user_message=body.message,
+        cv_data=cv_data,
+        stats=stats,
+        prefs=prefs,
+        history=body.history[-10:] if body.history else None,
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------
