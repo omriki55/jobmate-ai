@@ -17,7 +17,8 @@ from config.settings import ANTHROPIC_API_KEY
 
 logger = logging.getLogger(__name__)
 
-client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+_has_key = bool(ANTHROPIC_API_KEY) and not ANTHROPIC_API_KEY.startswith("your_")
+client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY) if _has_key else None
 
 # ---------------------------------------------------------------------------
 # System prompt — Donald's personality + available actions

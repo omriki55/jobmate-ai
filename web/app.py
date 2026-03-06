@@ -341,7 +341,9 @@ async def health_check():
     try:
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
-        return {"status": "healthy", "environment": ENVIRONMENT}
+        from config.settings import ANTHROPIC_API_KEY as _ak
+        has_llm = bool(_ak) and not _ak.startswith("your_")
+        return {"status": "healthy", "environment": ENVIRONMENT, "llm": has_llm}
     except Exception:
         return JSONResponse(status_code=503, content={"status": "unhealthy"})
 
