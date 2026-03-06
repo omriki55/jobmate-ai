@@ -1,7 +1,8 @@
 """
 JobMate AI — Web Interface (FastAPI)
-Mirrors the Telegram bot experience in a browser.
-Run: uvicorn web.app:app --reload --port 8000
+Production-ready web API with JWT auth, rate limiting, and security headers.
+Run (dev):  uvicorn web.app:app --reload --port 8000
+Run (prod): gunicorn web.app:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
 """
 from __future__ import annotations
 
@@ -14,17 +15,28 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # Resolve root so imports work whether launched from root or web/
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+from config.settings import (
+    CORS_ORIGINS,
+    ENVIRONMENT,
+    LOG_LEVEL,
+    MAX_UPLOAD_MB,
+)
 from db.database import AsyncSessionLocal, init_db
 from db.models import (
     ActivityLog, Application, CV, InterviewSession, Job,
@@ -42,12 +54,26 @@ from services.job_match import SAMPLE_JOBS, get_top_matches, get_top_matches_liv
 from services.job_search import search_jobs_by_keywords
 from services.job_scraper import scrape_and_store, get_total_job_count
 from services.linkedin_optimizer import generate_linkedin_optimization
-
-logger = logging.getLogger(__name__)
-
+from web.auth import create_token, get_current_user
 
 # ---------------------------------------------------------------------------
-# App lifecycle — init DB then kick off background scrape
+# Logging
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Rate limiter
+# ---------------------------------------------------------------------------
+
+limiter = Limiter(key_func=get_remote_address)
+
+# ---------------------------------------------------------------------------
+# App lifecycle
 # ---------------------------------------------------------------------------
 
 async def _background_scrape():
@@ -58,38 +84,89 @@ async def _background_scrape():
             logger.info("Background scrape done: %s", summary)
         except Exception as exc:
             logger.warning("Background scrape error: %s", exc)
-        await asyncio.sleep(2 * 60 * 60)   # 2 hours
+        await asyncio.sleep(2 * 60 * 60)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    # Fire-and-forget background scrape (first run + recurring)
     asyncio.create_task(_background_scrape())
     yield
 
 
 app = FastAPI(title="JobMate AI", lifespan=lifespan)
+app.state.limiter = limiter
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+# ---------------------------------------------------------------------------
+# Middleware — CORS
+# ---------------------------------------------------------------------------
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---------------------------------------------------------------------------
+# Middleware — security headers
+# ---------------------------------------------------------------------------
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        if ENVIRONMENT == "production":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "font-src 'self'"
+        )
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# ---------------------------------------------------------------------------
+# Global error handlers
+# ---------------------------------------------------------------------------
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Rate limit exceeded. Please slow down."},
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    if ENVIRONMENT == "production":
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+ALLOWED_EXTENSIONS = {".pdf", ".docx"}
+
+
 def _session_to_tid(session_id: str) -> int:
-    """Deterministically map a browser session UUID → stable integer telegram_id."""
+    """Deterministically map a browser session UUID → stable integer telegram_id.
+    Used ONLY during initial session creation to generate a user ID."""
     return abs(int(hashlib.sha256(f"web:{session_id}".encode()).hexdigest()[:14], 16))
-
-
-async def _get_user(db, session_id: str) -> User:
-    tid = _session_to_tid(session_id)
-    result = await db.execute(select(User).where(User.telegram_id == tid))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="Session not initialised — call /api/session/init first")
-    return user
 
 
 async def _get_or_create_job(db, job_data: dict) -> Job:
@@ -120,16 +197,37 @@ async def _get_or_create_job(db, job_data: dict) -> Job:
     return job
 
 
+def _resolve_job(db_job, job_id: int) -> dict:
+    """Convert DB job ORM or sample-catalogue entry → plain dict."""
+    if db_job:
+        return {
+            "title":        db_job.title,
+            "company":      db_job.company,
+            "location":     db_job.location,
+            "description":  db_job.description or "",
+            "requirements": db_job.requirements or [],
+        }
+    sample = next((j for j in SAMPLE_JOBS if j["id"] == job_id), None)
+    if not sample:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {
+        "title":        sample["title"],
+        "company":      sample["company"],
+        "location":     sample["location"],
+        "description":  sample.get("description", ""),
+        "requirements": sample.get("requirements", []),
+    }
+
+
 # ---------------------------------------------------------------------------
-# Request / response models
+# Request models (session_id removed — auth is via JWT header)
 # ---------------------------------------------------------------------------
 
-class SessionBody(BaseModel):
+class SessionInitBody(BaseModel):
     session_id: str
 
 
 class PreferencesBody(BaseModel):
-    session_id: str
     target_roles: list[str]
     locations: list[str]
     min_salary: Optional[int] = None
@@ -140,60 +238,50 @@ class PreferencesBody(BaseModel):
 
 
 class ApplyBody(BaseModel):
-    session_id: str
     job_ids: list[int]
 
 
 class TailorBody(BaseModel):
-    session_id: str
     job_id: int
 
 
 class InterviewPrepBody(BaseModel):
-    session_id: str
     job_id: int
 
 
 class SearchBody(BaseModel):
-    session_id: str
     keywords: list[str]
     limit: int = 10
 
 
 class OptimizeBody(BaseModel):
-    session_id: str
     job_description: str
     job_title: str = ""
     company: str = ""
 
 
 class UpdateStatusBody(BaseModel):
-    session_id: str
     application_id: int
     new_status: str
     notes: str = ""
 
 
 class SimStartBody(BaseModel):
-    session_id: str
     job_id: int
 
 
 class SimAnswerBody(BaseModel):
-    session_id: str
     sim_id: int
     question_index: int
     answer: str
 
 
 class HeadhunterBody(BaseModel):
-    session_id: str
     domain: str = ""
     location: str = ""
 
 
 class CoachBody(BaseModel):
-    session_id: str
     message: str = ""
 
 
@@ -208,12 +296,28 @@ async def serve_ui():
 
 
 # ---------------------------------------------------------------------------
-# Routes — session
+# Routes — health check
+# ---------------------------------------------------------------------------
+
+@app.get("/api/health")
+async def health_check():
+    """Health check — verifies DB connectivity."""
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+        return {"status": "healthy", "environment": ENVIRONMENT}
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "unhealthy"})
+
+
+# ---------------------------------------------------------------------------
+# Routes — session (only endpoint that accepts session_id, returns JWT)
 # ---------------------------------------------------------------------------
 
 @app.post("/api/session/init")
-async def init_session(body: SessionBody):
-    """Upsert a web user; return their current onboarding state."""
+@limiter.limit("30/minute")
+async def init_session(body: SessionInitBody, request: Request):
+    """Upsert a web user; return a signed JWT token."""
     tid = _session_to_tid(body.session_id)
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(User).where(User.telegram_id == tid))
@@ -223,7 +327,9 @@ async def init_session(body: SessionBody):
             db.add(user)
             await db.commit()
             await db.refresh(user)
-        return {"state": user.state, "streak": user.streak_days}
+
+    token = create_token(user.id)
+    return {"token": token, "state": user.state, "streak": user.streak_days}
 
 
 # ---------------------------------------------------------------------------
@@ -231,24 +337,40 @@ async def init_session(body: SessionBody):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/cv/upload")
-async def upload_cv(session_id: str = Form(...), file: UploadFile = File(...)):
+@limiter.limit("5/minute")
+async def upload_cv(
+    request: Request,
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
     """Accept a CV file, parse it with Claude, persist it."""
+    # Validate file extension
+    filename = file.filename or "cv.pdf"
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=422, detail=f"Unsupported file type '{ext}'. Please upload a PDF or DOCX file.")
+
+    # Validate file size
     raw_bytes = await file.read()
+    if len(raw_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {MAX_UPLOAD_MB}MB.")
+
     try:
-        raw_text, parsed = await process_cv(raw_bytes, file.filename or "cv.pdf")
+        raw_text, parsed = await process_cv(raw_bytes, filename)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, session_id)
+        result = await db.execute(select(User).where(User.id == user.id))
+        db_user = result.scalar_one()
 
         # Deactivate old CVs
-        old = await db.execute(select(CV).where(CV.user_id == user.id, CV.is_active == True))
+        old = await db.execute(select(CV).where(CV.user_id == db_user.id, CV.is_active == True))
         for old_cv in old.scalars():
             old_cv.is_active = False
 
         cv = CV(
-            user_id=user.id,
+            user_id=db_user.id,
             raw_text=raw_text,
             parsed_data=parsed,
             cv_score=parsed.get("cv_score", 0),
@@ -270,48 +392,27 @@ async def upload_cv(session_id: str = Form(...), file: UploadFile = File(...)):
 
 
 @app.post("/api/cv/tailor")
-async def tailor_cv(body: TailorBody):
-    """
-    Tailor CV talking-points for a specific job using Claude.
-    Works even without an uploaded CV (returns generic talking points).
-    """
+@limiter.limit("10/minute")
+async def tailor_cv(
+    body: TailorBody,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """Tailor CV talking-points for a specific job using Claude."""
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
-
-        # Fetch active CV (may be None for users who skipped upload)
         cv_res = await db.execute(
             select(CV).where(CV.user_id == user.id, CV.is_active == True)
         )
         cv = cv_res.scalar_one_or_none()
         cv_data: dict = cv.parsed_data if cv and cv.parsed_data else {}
 
-        # Fetch job from DB first, then fall back to sample catalogue
         job_res = await db.execute(select(Job).where(Job.id == body.job_id))
-        db_job  = job_res.scalar_one_or_none()
+        db_job = job_res.scalar_one_or_none()
 
-    if db_job:
-        job_dict = {
-            "title":        db_job.title,
-            "company":      db_job.company,
-            "location":     db_job.location,
-            "description":  db_job.description or "",
-            "requirements": db_job.requirements or [],
-        }
-    else:
-        sample = next((j for j in SAMPLE_JOBS if j["id"] == body.job_id), None)
-        if not sample:
-            raise HTTPException(status_code=404, detail="Job not found")
-        job_dict = {
-            "title":        sample["title"],
-            "company":      sample["company"],
-            "location":     sample["location"],
-            "description":  sample.get("description", ""),
-            "requirements": sample.get("requirements", []),
-        }
-
+    job_dict = _resolve_job(db_job, body.job_id)
     tailored = await tailor_cv_for_job(cv_data, job_dict)
     return {
-        "job":     {"title": job_dict["title"], "company": job_dict["company"]},
+        "job":      {"title": job_dict["title"], "company": job_dict["company"]},
         "tailored": tailored,
     }
 
@@ -321,12 +422,16 @@ async def tailor_cv(body: TailorBody):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/preferences")
-async def save_preferences(body: PreferencesBody):
+async def save_preferences(
+    body: PreferencesBody,
+    user: User = Depends(get_current_user),
+):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
+        db_user_res = await db.execute(select(User).where(User.id == user.id))
+        db_user = db_user_res.scalar_one()
 
         pref_res = await db.execute(
-            select(UserPreferences).where(UserPreferences.user_id == user.id)
+            select(UserPreferences).where(UserPreferences.user_id == db_user.id)
         )
         prefs = pref_res.scalar_one_or_none()
         fields = dict(
@@ -342,9 +447,9 @@ async def save_preferences(body: PreferencesBody):
             for k, v in fields.items():
                 setattr(prefs, k, v)
         else:
-            db.add(UserPreferences(user_id=user.id, **fields))
+            db.add(UserPreferences(user_id=db_user.id, **fields))
 
-        user.state = "ACTIVE"
+        db_user.state = "ACTIVE"
         await db.commit()
 
     return {"status": "ok"}
@@ -355,10 +460,8 @@ async def save_preferences(body: PreferencesBody):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/matches")
-async def get_matches(session_id: str):
+async def get_matches(user: User = Depends(get_current_user)):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, session_id)
-
         cv_res = await db.execute(
             select(CV).where(CV.user_id == user.id, CV.is_active == True)
         )
@@ -378,24 +481,24 @@ async def get_matches(session_id: str):
                 "company_sizes": prefs.company_sizes or [],
             }
 
-    # Use live DB jobs (falls back to samples if DB empty)
     matches = await get_top_matches_live(cv_skills, preferences, limit=6, threshold=30)
     total_jobs = await get_total_job_count()
     return {"matches": matches, "total_jobs_indexed": total_jobs}
 
 
 # ---------------------------------------------------------------------------
-# Routes — jobs refresh (manual trigger)
+# Routes — jobs
 # ---------------------------------------------------------------------------
 
 @app.post("/api/jobs/refresh")
-async def refresh_jobs():
-    """Manually trigger a job scrape. Returns summary."""
+@limiter.limit("5/minute")
+async def refresh_jobs(request: Request):
+    """Manually trigger a job scrape."""
     try:
         summary = await scrape_and_store()
         return {"status": "ok", **summary}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Job refresh failed")
 
 
 @app.get("/api/jobs/count")
@@ -405,20 +508,20 @@ async def jobs_count():
 
 
 # ---------------------------------------------------------------------------
-# Routes — apply (works for both sample and DB job IDs)
+# Routes — apply
 # ---------------------------------------------------------------------------
 
 @app.post("/api/apply")
-async def apply_to_jobs(body: ApplyBody):
+async def apply_to_jobs(
+    body: ApplyBody,
+    user: User = Depends(get_current_user),
+):
     applied, skipped = [], []
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
         for jid in body.job_ids:
-            # Look up job in DB by primary key first
             job_res = await db.execute(select(Job).where(Job.id == jid))
             job = job_res.scalar_one_or_none()
 
-            # Fallback: sample jobs catalogue
             if not job:
                 job_data = next((j for j in SAMPLE_JOBS if j["id"] == jid), None)
                 if job_data:
@@ -442,9 +545,8 @@ async def apply_to_jobs(body: ApplyBody):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/pipeline")
-async def get_pipeline(session_id: str):
+async def get_pipeline(user: User = Depends(get_current_user)):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, session_id)
         rows = (await db.execute(
             select(Application, Job)
             .join(Job, Application.job_id == Job.id)
@@ -472,9 +574,8 @@ async def get_pipeline(session_id: str):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/stats")
-async def get_stats(session_id: str):
+async def get_stats(user: User = Depends(get_current_user)):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, session_id)
         apps = (await db.execute(
             select(Application).where(Application.user_id == user.id)
         )).scalars().all()
@@ -499,34 +600,15 @@ async def get_stats(session_id: str):
 # Routes — interview prep
 # ---------------------------------------------------------------------------
 
-def _resolve_job(db_job, job_id: int) -> dict:
-    """Convert DB job ORM or sample-catalogue entry → plain dict."""
-    if db_job:
-        return {
-            "title":        db_job.title,
-            "company":      db_job.company,
-            "location":     db_job.location,
-            "description":  db_job.description or "",
-            "requirements": db_job.requirements or [],
-        }
-    sample = next((j for j in SAMPLE_JOBS if j["id"] == job_id), None)
-    if not sample:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return {
-        "title":        sample["title"],
-        "company":      sample["company"],
-        "location":     sample["location"],
-        "description":  sample.get("description", ""),
-        "requirements": sample.get("requirements", []),
-    }
-
-
 @app.post("/api/interview/prep")
-async def interview_prep(body: InterviewPrepBody):
-    """Generate 5 tailored interview Q&A pairs for a job using Claude."""
+@limiter.limit("10/minute")
+async def interview_prep(
+    body: InterviewPrepBody,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """Generate 5 tailored interview Q&A pairs for a job."""
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
-
         cv_res = await db.execute(
             select(CV).where(CV.user_id == user.id, CV.is_active == True)
         )
@@ -534,7 +616,7 @@ async def interview_prep(body: InterviewPrepBody):
         cv_data: dict = cv.parsed_data if cv and cv.parsed_data else {}
 
         job_res = await db.execute(select(Job).where(Job.id == body.job_id))
-        db_job  = job_res.scalar_one_or_none()
+        db_job = job_res.scalar_one_or_none()
 
     job_dict = _resolve_job(db_job, body.job_id)
     questions = await generate_interview_prep(cv_data, job_dict)
@@ -542,18 +624,13 @@ async def interview_prep(body: InterviewPrepBody):
 
 
 # ---------------------------------------------------------------------------
-# Routes — CV export (.docx download)
+# Routes — CV export
 # ---------------------------------------------------------------------------
 
 @app.get("/api/cv/export")
-async def export_cv(session_id: str, job_id: int):
-    """
-    Generate and stream a tailored .docx CV for the given job.
-    The browser triggers a file download automatically.
-    """
+async def export_cv(job_id: int, user: User = Depends(get_current_user)):
+    """Generate and stream a tailored .docx CV."""
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, session_id)
-
         cv_res = await db.execute(
             select(CV).where(CV.user_id == user.id, CV.is_active == True)
         )
@@ -561,13 +638,10 @@ async def export_cv(session_id: str, job_id: int):
         cv_data: dict = cv.parsed_data if cv and cv.parsed_data else {}
 
         job_res = await db.execute(select(Job).where(Job.id == job_id))
-        db_job  = job_res.scalar_one_or_none()
+        db_job = job_res.scalar_one_or_none()
 
     job_dict = _resolve_job(db_job, job_id)
-
-    # Re-run tailoring to get the most recent talking-points
     tailored = await tailor_cv_for_job(cv_data, job_dict)
-
     docx_bytes = generate_tailored_cv_docx(cv_data, tailored, job_dict)
 
     safe_company = "".join(c for c in job_dict["company"] if c.isalnum() or c in "- ")
@@ -582,17 +656,12 @@ async def export_cv(session_id: str, job_id: int):
 
 
 # ---------------------------------------------------------------------------
-# Routes — digest (morning check-in summary for returning users)
+# Routes — digest
 # ---------------------------------------------------------------------------
 
 @app.get("/api/digest")
-async def get_digest(session_id: str):
-    """
-    Return a lightweight digest for returning users:
-    streak, total apps, and how many new jobs were indexed since the last check-in.
-    """
+async def get_digest(user: User = Depends(get_current_user)):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, session_id)
         total_apps = (await db.execute(
             select(Application).where(Application.user_id == user.id)
         )).scalars().all()
@@ -610,11 +679,11 @@ async def get_digest(session_id: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/jobs/search")
-async def search_jobs(body: SearchBody):
-    """Search jobs by keywords against title, description, company."""
+async def search_jobs(
+    body: SearchBody,
+    user: User = Depends(get_current_user),
+):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
-
         cv_res = await db.execute(
             select(CV).where(CV.user_id == user.id, CV.is_active == True)
         )
@@ -648,10 +717,13 @@ async def search_jobs(body: SearchBody):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/cv/optimize")
-async def optimize_cv(body: OptimizeBody):
-    """ATS-optimize CV against a raw job description text."""
+@limiter.limit("10/minute")
+async def optimize_cv(
+    body: OptimizeBody,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
         cv_res = await db.execute(
             select(CV).where(CV.user_id == user.id, CV.is_active == True)
         )
@@ -670,16 +742,12 @@ async def optimize_cv(body: OptimizeBody):
 
 
 # ---------------------------------------------------------------------------
-# Routes — dashboard (combined view)
+# Routes — dashboard
 # ---------------------------------------------------------------------------
 
 @app.get("/api/dashboard")
-async def get_dashboard(session_id: str):
-    """Combined dashboard: pipeline + stats + recent activity."""
+async def get_dashboard(user: User = Depends(get_current_user)):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, session_id)
-
-        # Pipeline
         rows = (await db.execute(
             select(Application, Job)
             .join(Job, Application.job_id == Job.id)
@@ -687,7 +755,6 @@ async def get_dashboard(session_id: str):
             .order_by(Application.submitted_at.desc())
         )).all()
 
-        # Stats
         apps_list = [app for app, _ in rows]
         by_status: dict[str, int] = {}
         for a in apps_list:
@@ -696,7 +763,6 @@ async def get_dashboard(session_id: str):
         responded = total - by_status.get("applied", 0)
         interviews = by_status.get("interview", 0) + by_status.get("offer", 0)
 
-        # Recent activity
         activity_rows = (await db.execute(
             select(ActivityLog)
             .where(ActivityLog.user_id == user.id)
@@ -704,7 +770,6 @@ async def get_dashboard(session_id: str):
             .limit(20)
         )).scalars().all()
 
-        # Unread notifications
         notif_count = (await db.execute(
             select(func.count(Notification.id))
             .where(Notification.user_id == user.id, Notification.is_read == False)
@@ -752,14 +817,15 @@ async def get_dashboard(session_id: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/pipeline/update")
-async def update_pipeline_status(body: UpdateStatusBody):
-    """Update an application's status."""
+async def update_pipeline_status(
+    body: UpdateStatusBody,
+    user: User = Depends(get_current_user),
+):
     valid_statuses = {"applied", "viewed", "contacted", "interview", "offer", "rejected", "withdrawn"}
     if body.new_status not in valid_statuses:
         raise HTTPException(status_code=422, detail=f"Invalid status. Must be one of: {valid_statuses}")
 
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
         app_res = await db.execute(
             select(Application).where(
                 Application.id == body.application_id,
@@ -776,7 +842,6 @@ async def update_pipeline_status(body: UpdateStatusBody):
         if body.notes:
             app.notes = body.notes
 
-        # Log the activity
         db.add(ActivityLog(
             user_id=user.id,
             action="status_change",
@@ -792,10 +857,8 @@ async def update_pipeline_status(body: UpdateStatusBody):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/notifications")
-async def get_notifications(session_id: str):
-    """Return unread notifications for the user."""
+async def get_notifications(user: User = Depends(get_current_user)):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, session_id)
         rows = (await db.execute(
             select(Notification)
             .where(Notification.user_id == user.id)
@@ -803,7 +866,6 @@ async def get_notifications(session_id: str):
             .limit(20)
         )).scalars().all()
 
-        # Mark as read
         for n in rows:
             if not n.is_read:
                 n.is_read = True
@@ -826,11 +888,13 @@ async def get_notifications(session_id: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/interview/simulate/start")
-async def start_interview_sim(body: SimStartBody):
-    """Start a mock interview simulation for a specific job."""
+@limiter.limit("10/minute")
+async def start_interview_sim(
+    body: SimStartBody,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
-
         cv_res = await db.execute(
             select(CV).where(CV.user_id == user.id, CV.is_active == True)
         )
@@ -841,16 +905,10 @@ async def start_interview_sim(body: SimStartBody):
         db_job = job_res.scalar_one_or_none()
 
     job_dict = _resolve_job(db_job, body.job_id)
-
-    # Research the company
     company_context = await research_company(job_dict.get("company", ""), job_dict)
-
-    # Generate simulation questions
     sim_result = await start_simulation(cv_data, job_dict, company_context)
 
-    # Persist the simulation session
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
         session = InterviewSession(
             user_id=user.id,
             job_id=body.job_id,
@@ -876,11 +934,13 @@ async def start_interview_sim(body: SimStartBody):
 
 
 @app.post("/api/interview/simulate/answer")
-async def submit_sim_answer(body: SimAnswerBody):
-    """Submit an answer for a mock interview question and get feedback."""
+@limiter.limit("10/minute")
+async def submit_sim_answer(
+    body: SimAnswerBody,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
-
         sim_res = await db.execute(
             select(InterviewSession).where(
                 InterviewSession.id == body.sim_id,
@@ -907,11 +967,8 @@ async def submit_sim_answer(body: SimAnswerBody):
         raise HTTPException(status_code=422, detail="Invalid question index")
 
     question = questions[body.question_index]
-
-    # Evaluate the answer
     feedback = await evaluate_answer(cv_data, job_dict, question, body.answer)
 
-    # Persist answer + feedback
     async with AsyncSessionLocal() as db:
         sim_res = await db.execute(
             select(InterviewSession).where(InterviewSession.id == body.sim_id)
@@ -925,7 +982,6 @@ async def submit_sim_answer(body: SimAnswerBody):
         })
         sim.answers = answers
 
-        # Calculate overall score if all questions answered
         if len(answers) >= len(questions):
             scores = [a["feedback"].get("score", 5) for a in answers if "feedback" in a]
             sim.overall_score = round(sum(scores) / len(scores)) if scores else 5
@@ -946,11 +1002,13 @@ async def submit_sim_answer(body: SimAnswerBody):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/headhunters/find")
-async def find_headhunters_route(body: HeadhunterBody):
-    """Find headhunters/recruiters specialized in the user's field."""
+@limiter.limit("10/minute")
+async def find_headhunters_route(
+    body: HeadhunterBody,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
-
         cv_res = await db.execute(
             select(CV).where(CV.user_id == user.id, CV.is_active == True)
         )
@@ -979,14 +1037,17 @@ async def find_headhunters_route(body: HeadhunterBody):
 
 
 # ---------------------------------------------------------------------------
-# Routes — career coach (emotional support)
+# Routes — career coach
 # ---------------------------------------------------------------------------
 
 @app.post("/api/coach")
-async def coaching(body: CoachBody):
-    """Get a personalized coaching message based on pipeline data."""
+@limiter.limit("10/minute")
+async def coaching(
+    body: CoachBody,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
         apps = (await db.execute(
             select(Application).where(Application.user_id == user.id)
         )).scalars().all()
@@ -1016,11 +1077,12 @@ async def coaching(body: CoachBody):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/linkedin/optimize")
-async def optimize_linkedin(body: SessionBody):
-    """Generate LinkedIn profile optimization guide from CV data."""
+@limiter.limit("10/minute")
+async def optimize_linkedin(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     async with AsyncSessionLocal() as db:
-        user = await _get_user(db, body.session_id)
-
         cv_res = await db.execute(
             select(CV).where(CV.user_id == user.id, CV.is_active == True)
         )
@@ -1035,3 +1097,10 @@ async def optimize_linkedin(body: SessionBody):
 
     result = await generate_linkedin_optimization(cv_data, target_roles)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Mount static files (MUST be after all route definitions)
+# ---------------------------------------------------------------------------
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

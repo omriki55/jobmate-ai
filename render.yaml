@@ -1,0 +1,31 @@
+databases:
+  - name: jobmate-db
+    plan: free
+    databaseName: jobmate
+    user: jobmate
+
+services:
+  - type: web
+    name: jobmate-ai
+    plan: free
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: jobmate-db
+          property: connectionString
+        # Render gives postgres:// — we need postgresql+asyncpg://
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+      - key: ANTHROPIC_API_KEY
+        sync: false  # You'll set this manually in Render dashboard
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: MAX_UPLOAD_MB
+        value: "10"
+    healthCheckPath: /api/health

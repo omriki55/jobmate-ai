@@ -646,6 +646,7 @@ const PHASES = {
 let phase = PHASES.WELCOME;
 let sessionId = localStorage.getItem('jm_session') || crypto.randomUUID();
 localStorage.setItem('jm_session', sessionId);
+let authToken = sessionStorage.getItem('jm_token') || null;
 let prefs = {};         // collected during onboarding
 let cvData = null;      // parsed CV result
 let pendingMatches = []; // current match list
@@ -758,6 +759,8 @@ async function boot(){
   setInputEnabled(false);
   loadJobCount();   // fire-and-forget — shows live job count in header
   const res = await api('/api/session/init','POST',{session_id:sessionId});
+  authToken = res.token;
+  sessionStorage.setItem('jm_token', authToken);
   if(res.state === 'ACTIVE'){
     phase = PHASES.ACTIVE;
     showNavButtons();
@@ -770,8 +773,7 @@ async function boot(){
     if(elapsed > 4 * 60 * 60 * 1000){
       // First visit today (or new session) — show digest
       try {
-        const digest = await api(`/api/digest?session_id=${sessionId}`);
-        await showMorningDigest(digest);
+        const digest = await api('/api/digest');
       } catch(e) {
         await addBotBubble(`👋 Welcome back! Your streak is **${res.streak} days**.\n\nWhat would you like to do?`);
         showMainMenu();
@@ -820,11 +822,12 @@ async function handleFile(file){
   addTyping();
 
   const form = new FormData();
-  form.append('session_id', sessionId);
   form.append('file', file);
 
   try {
-    const r = await fetch('/api/cv/upload',{method:'POST',body:form});
+    const hdrs = {};
+    if(authToken) hdrs['Authorization'] = `Bearer ${authToken}`;
+    const r = await fetch('/api/cv/upload',{method:'POST',body:form,headers:hdrs});
     if(!r.ok) throw new Error(await r.text());
     cvData = await r.json();
     removeTyping();
@@ -997,7 +1000,6 @@ async function confirmPrefs(){
   addTyping();
   try {
     await api('/api/preferences','POST',{
-      session_id: sessionId,
       target_roles: prefs.target_roles||[],
       locations: prefs.locations||['any'],
       min_salary: prefs.min_salary||null,
@@ -1078,7 +1080,7 @@ async function showMatches(){
   if(phase!==PHASES.ACTIVE) return;
   addTyping();
   try {
-    const data = await api(`/api/matches?session_id=${sessionId}`);
+    const data = await api('/api/matches');
     removeTyping();
     pendingMatches = data.matches||[];
     // Update count badge with actual DB size
@@ -1155,8 +1157,8 @@ async function applyOne(jobId, btn){
   try {
     // Tailor CV + apply in parallel for speed
     const [tailorRes, applyRes] = await Promise.all([
-      api('/api/cv/tailor','POST',{session_id:sessionId, job_id:jobId}),
-      api('/api/apply','POST',{session_id:sessionId, job_ids:[jobId]}),
+      api('/api/cv/tailor','POST',{job_id:jobId}),
+      api('/api/apply','POST',{job_ids:[jobId]}),
     ]);
 
     // Annotate response with jobId so the download/prep buttons work
@@ -1343,14 +1345,27 @@ function buildTailorCard(res){
 
 async function downloadCV(jobId){
   if(!jobId){ await addBotBubble('❌ Cannot identify job for download.'); return; }
-  window.open(`/api/cv/export?session_id=${encodeURIComponent(sessionId)}&job_id=${jobId}`, '_blank');
+  // Use fetch with auth header for file download
+  try {
+    const hdrs = {};
+    if(authToken) hdrs['Authorization'] = `Bearer ${authToken}`;
+    const r = await fetch(`/api/cv/export?job_id=${jobId}`, {headers: hdrs});
+    if(!r.ok) throw new Error('Export failed');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = r.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g,'') || 'CV.docx';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) { await addBotBubble('❌ CV export failed. Try again.'); }
 }
 
 async function showInterviewPrep(jobId, btn){
   if(!jobId){ await addBotBubble('❌ Cannot identify job for prep.'); return; }
   if(btn){ btn.disabled=true; btn.textContent='⏳ Generating…'; }
   try {
-    const res = await api('/api/interview/prep','POST',{session_id:sessionId, job_id:Number(jobId)});
+    const res = await api('/api/interview/prep','POST',{job_id:Number(jobId)});
     if(btn){ btn.disabled=false; btn.textContent='🎯 Interview Prep'; }
     const qs = res.questions || [];
     await addBotBubble(`🎯 **Interview Prep — ${res.job?.title} @ ${res.job?.company}**\n\n${qs.length} likely questions with answer frameworks. Click each to expand.`);
@@ -1418,7 +1433,7 @@ async function applyToAll(){
   document.getElementById('apply-bar')?.remove();
   const ids = pendingMatches.map(j=>j.id);
   addTyping();
-  const res = await api('/api/apply','POST',{session_id:sessionId, job_ids:ids});
+  const res = await api('/api/apply','POST',{job_ids:ids});
   removeTyping();
   const n = res.applied?.length||0;
   ids.forEach(id=>{
@@ -1433,7 +1448,7 @@ async function applyToAll(){
 async function showPipeline(){
   if(phase!==PHASES.ACTIVE) return;
   addTyping();
-  const data = await api(`/api/pipeline?session_id=${sessionId}`);
+  const data = await api('/api/pipeline');
   removeTyping();
   const apps = data.applications||[];
   if(!apps.length){
@@ -1467,7 +1482,7 @@ async function showPipeline(){
     sel.onchange = async () => {
       try {
         await api('/api/pipeline/update','POST',{
-          session_id:sessionId, application_id:app.id, new_status:sel.value
+          application_id:app.id, new_status:sel.value
         });
         sel.style.borderColor='var(--accent)';
         setTimeout(()=>sel.style.borderColor='',1500);
@@ -1504,7 +1519,7 @@ async function showDashboard(){
   if(phase!==PHASES.ACTIVE) return;
   addTyping();
   try {
-    const d = await api(`/api/dashboard?session_id=${sessionId}`);
+    const d = await api('/api/dashboard');
     removeTyping();
     const stats = d.stats || {};
     const pipeline = d.pipeline || [];
@@ -1587,7 +1602,7 @@ async function showDashboard(){
 async function showStats(){
   if(phase!==PHASES.ACTIVE) return;
   addTyping();
-  const d = await api(`/api/stats?session_id=${sessionId}`);
+  const d = await api('/api/stats');
   removeTyping();
   await addBotBubble(`📈 **Your Job Search Stats**`);
   const wrap=document.createElement('div');
@@ -1628,7 +1643,7 @@ async function doJobSearch(){
   addUserBubble(`🔎 ${q}`);
   addTyping();
   try {
-    const res=await api('/api/jobs/search','POST',{session_id:sessionId,keywords,limit:8});
+    const res=await api('/api/jobs/search','POST',{keywords,limit:8});
     removeTyping();
     const results=res.results||[];
     if(!results.length){
@@ -1659,7 +1674,7 @@ async function startInterviewSim(jobId, btn){
   if(!jobId){ await addBotBubble('❌ Cannot identify job.'); return; }
   if(btn){ btn.disabled=true; btn.textContent='⏳ Preparing...'; }
   try {
-    const res = await api('/api/interview/simulate/start','POST',{session_id:sessionId,job_id:Number(jobId)});
+    const res = await api('/api/interview/simulate/start','POST',{job_id:Number(jobId)});
     if(btn){ btn.disabled=false; btn.textContent='🎙️ Mock Interview'; }
 
     currentSim = {
@@ -1753,7 +1768,6 @@ async function submitSimAnswer(idx){
 
   try {
     const res=await api('/api/interview/simulate/answer','POST',{
-      session_id:sessionId,
       sim_id:currentSim.sim_id,
       question_index:idx,
       answer:answer,
@@ -1801,7 +1815,7 @@ async function showHeadhunters(){
   if(phase!==PHASES.ACTIVE) return;
   addTyping();
   try {
-    const res=await api('/api/headhunters/find','POST',{session_id:sessionId});
+    const res=await api('/api/headhunters/find','POST',{});
     removeTyping();
     await addBotBubble('🤝 **Recruiter Discovery** — strategies and search queries tailored to your field.');
 
@@ -1891,7 +1905,7 @@ async function showCoach(message=''){
   if(phase!==PHASES.ACTIVE) return;
   addTyping();
   try {
-    const res=await api('/api/coach','POST',{session_id:sessionId,message});
+    const res=await api('/api/coach','POST',{message});
     removeTyping();
 
     const wrap=document.createElement('div');
@@ -1935,7 +1949,7 @@ async function showLinkedInOptimize(){
   if(phase!==PHASES.ACTIVE) return;
   addTyping();
   try {
-    const res=await api('/api/linkedin/optimize','POST',{session_id:sessionId});
+    const res=await api('/api/linkedin/optimize','POST',{});
     removeTyping();
     await addBotBubble('💼 **LinkedIn Profile Optimization** — copy these suggestions to your profile.');
 
@@ -2114,8 +2128,16 @@ $msgs.addEventListener('keydown', e=>{
 // ─────────────────────────────────────────────────────────────────────────────
 async function api(url, method='GET', body=null){
   const opts={method,headers:{}};
+  if(authToken) opts.headers['Authorization'] = `Bearer ${authToken}`;
   if(body){ opts.headers['Content-Type']='application/json'; opts.body=JSON.stringify(body); }
   const r = await fetch(url,opts);
+  if(r.status === 401){
+    // Token expired or invalid — re-init session
+    sessionStorage.removeItem('jm_token');
+    authToken = null;
+    await boot();
+    throw new Error('Session expired. Please try again.');
+  }
   if(!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
   return r.json();
 }
