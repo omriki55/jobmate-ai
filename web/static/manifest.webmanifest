@@ -1,0 +1,11 @@
+{
+  "name": "Donald — Career Advisor",
+  "short_name": "Donald",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#10b981",
+  "icons": [
+    {"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml"}
+  ]
+}

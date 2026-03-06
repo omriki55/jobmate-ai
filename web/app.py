@@ -1502,6 +1502,24 @@ async def daily_motivation(
 
 
 # ---------------------------------------------------------------------------
+# PWA: manifest & service worker (served from root scope)
+# ---------------------------------------------------------------------------
+
+@app.get("/manifest.webmanifest")
+async def serve_manifest():
+    path = os.path.join(STATIC_DIR, "manifest.webmanifest")
+    return Response(content=open(path, "rb").read(), media_type="application/manifest+json")
+
+@app.get("/sw.js")
+async def serve_sw():
+    path = os.path.join(STATIC_DIR, "sw.js")
+    return Response(
+        content=open(path, "rb").read(),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"},
+    )
+
+# ---------------------------------------------------------------------------
 # Mount static files (MUST be after all route definitions)
 # ---------------------------------------------------------------------------
 
