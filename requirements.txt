@@ -24,6 +24,7 @@ python-docx==1.2.0
 # HTTP & config
 httpx==0.28.1
 python-dotenv==1.2.1
+beautifulsoup4==4.12.3
 
 # Telegram bot
 python-telegram-bot[job-queue]==21.5

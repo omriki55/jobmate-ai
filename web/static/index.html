@@ -610,6 +610,13 @@ header{
 }
 .li-paste-area:focus{border-color:#0a66c2}
 .li-paste-area::placeholder{color:var(--text-muted)}
+.li-url-field{
+  width:100%;background:var(--input-bg);border:1px solid var(--border);
+  border-radius:8px;padding:10px;color:var(--text);
+  font-size:12px;font-family:inherit;outline:none;box-sizing:border-box;
+}
+.li-url-field:focus{border-color:#0a66c2}
+.li-url-field::placeholder{color:var(--text-muted)}
 .li-paste-actions{display:flex;gap:8px;margin-top:10px}
 .li-paste-btn{
   background:#0a66c2;color:white;border:none;
@@ -2488,19 +2495,25 @@ async function showCoach(message=''){
 // ─────────────────────────────────────────────────────────────────────────────
 async function showLinkedInOptimize(){
   if(phase!==PHASES.ACTIVE) return;
-  await addBotBubble('💼 **LinkedIn Profile Scanner** — I\'ll analyze your profile section by section.');
-  showLinkedInPasteUI(async (profileText)=>{
+
+  const linkedinUrl = prefs.linkedin_url;
+
+  if(linkedinUrl){
+    // Auto-scan mode: URL is available
+    await addBotBubble(`💼 **Scanning your LinkedIn profile…**\n\`${linkedinUrl}\``);
     addTyping();
     try {
       const res=await api('/api/linkedin/optimize','POST',{
-        profile_text: profileText || null,
-        linkedin_url: prefs.linkedin_url || null,
+        profile_text: null,
+        linkedin_url: linkedinUrl,
       });
       removeTyping();
-      if(profileText){
-        await addBotBubble('🔍 **Scan complete!** Here\'s your section-by-section analysis:');
+      if(res._scrape_status==='scraped'){
+        await addBotBubble('🔍 **Scan complete!** I read your LinkedIn profile — here\'s your section-by-section analysis:');
+      } else if(res._scrape_status==='scrape_failed'){
+        await addBotBubble('💼 **LinkedIn Tips** — I couldn\'t fully read your profile (it may be private), so here are tips based on your CV:');
       } else {
-        await addBotBubble('💼 **LinkedIn Tips** — based on your CV (paste your profile for a deeper scan):');
+        await addBotBubble('💼 **LinkedIn Tips** — based on your CV:');
       }
       const card = buildLinkedInCard(res);
       addBotRow(card, false);
@@ -2508,42 +2521,67 @@ async function showLinkedInOptimize(){
       removeTyping();
       await addBotBubble('❌ Couldn\'t analyze LinkedIn profile. Make sure you\'ve uploaded a CV first.');
     }
-  });
+  } else {
+    // No URL stored: show URL input
+    await addBotBubble('💼 **LinkedIn Profile Scanner** — enter your LinkedIn URL and I\'ll scan it automatically.');
+    showLinkedInUrlInput(async (url)=>{
+      addTyping();
+      try {
+        const res=await api('/api/linkedin/optimize','POST',{
+          profile_text: null,
+          linkedin_url: url || null,
+        });
+        removeTyping();
+        if(res._scrape_status==='scraped'){
+          await addBotBubble('🔍 **Scan complete!** Here\'s your section-by-section analysis:');
+        } else {
+          await addBotBubble('💼 **LinkedIn Tips** — based on your CV:');
+        }
+        const card = buildLinkedInCard(res);
+        addBotRow(card, false);
+      } catch(e) {
+        removeTyping();
+        await addBotBubble('❌ Couldn\'t analyze LinkedIn profile. Make sure you\'ve uploaded a CV first.');
+      }
+    });
+  }
 }
 
-function showLinkedInPasteUI(callback){
+function showLinkedInUrlInput(callback){
   const wrap=document.createElement('div');
   wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
   const card=document.createElement('div');
   card.className='li-paste-wrap';
   card.innerHTML=`
-    <div class="li-paste-header">📋 Paste Your LinkedIn Profile</div>
+    <div class="li-paste-header">🔗 Enter Your LinkedIn URL</div>
     <div class="li-paste-steps">
       <ol>
-        <li>Open your LinkedIn profile in a new tab</li>
-        <li>Press <strong>Ctrl+A</strong> (or Cmd+A) to select all</li>
-        <li>Press <strong>Ctrl+C</strong> (or Cmd+C) to copy</li>
-        <li>Click the box below and <strong>Ctrl+V</strong> to paste</li>
+        <li>Enter your LinkedIn profile URL below</li>
+        <li>Click <strong>Scan My Profile</strong></li>
+        <li>I'll read your profile and give you section-by-section tips</li>
       </ol>
     </div>
-    <textarea class="li-paste-area" placeholder="Paste your LinkedIn profile text here..."></textarea>
+    <input type="text" class="li-url-field" placeholder="https://linkedin.com/in/yourname"/>
     <div class="li-paste-actions">
-      <button class="li-paste-btn">🔍 Analyze My Profile</button>
+      <button class="li-paste-btn">🔍 Scan My Profile</button>
       <button class="li-skip-btn">Skip — use my CV</button>
     </div>`;
   wrap.appendChild(card);
   addBotRow(wrap, false);
 
-  const textarea=card.querySelector('.li-paste-area');
-  const analyzeBtn=card.querySelector('.li-paste-btn');
+  const urlField=card.querySelector('.li-url-field');
+  const scanBtn=card.querySelector('.li-paste-btn');
   const skipBtn=card.querySelector('.li-skip-btn');
 
-  analyzeBtn.onclick=()=>{
-    const text=textarea.value.trim();
-    if(!text){textarea.style.borderColor='var(--danger)';return;}
-    analyzeBtn.disabled=true;
-    analyzeBtn.textContent='Analyzing...';
-    callback(text);
+  scanBtn.onclick=()=>{
+    const url=urlField.value.trim();
+    if(!url){urlField.style.borderColor='var(--danger)';return;}
+    let normalized=url;
+    if(!normalized.startsWith('http')) normalized='https://'+normalized;
+    prefs.linkedin_url=normalized;
+    scanBtn.disabled=true;
+    scanBtn.textContent='Scanning...';
+    callback(normalized);
   };
   skipBtn.onclick=()=>{
     callback(null);
@@ -2851,16 +2889,18 @@ async function searchJobsByHistory(){
 
 async function showLinkedInOnboarding(){
   phase = PHASES.LINKEDIN_ONBOARDING;
-  await addBotBubble(`💼 **Let me scan your LinkedIn profile** — I'll show you exactly what to improve, section by section.`);
-  showLinkedInPasteUI(async (profileText)=>{
+
+  const linkedinUrl = prefs.linkedin_url;
+
+  async function handleLinkedInResult(url){
     addTyping();
     try {
       const res = await api('/api/linkedin/optimize','POST',{
-        profile_text: profileText || null,
-        linkedin_url: prefs.linkedin_url || null,
+        profile_text: null,
+        linkedin_url: url || null,
       });
       removeTyping();
-      if(profileText){
+      if(res._scrape_status==='scraped'){
         await addBotBubble('🔍 **Scan complete!** Here\'s your section-by-section analysis:');
       } else {
         await addBotBubble('💼 **LinkedIn Tips** based on your CV:');
@@ -2883,7 +2923,17 @@ async function showLinkedInOnboarding(){
       await sleep(400);
       await confirmAndComplete();
     }
-  });
+  }
+
+  if(linkedinUrl){
+    await addBotBubble(`💼 **Scanning your LinkedIn profile…**\n\`${linkedinUrl}\``);
+    await handleLinkedInResult(linkedinUrl);
+  } else {
+    await addBotBubble(`💼 **Let me scan your LinkedIn profile** — enter your URL and I'll analyze it.`);
+    showLinkedInUrlInput(async (url)=>{
+      await handleLinkedInResult(url);
+    });
+  }
 }
 
 async function confirmAndComplete(){

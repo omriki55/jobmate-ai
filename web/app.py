@@ -1150,10 +1150,26 @@ async def optimize_linkedin(
         target_roles = prefs.target_roles if prefs else []
         linkedin_url = body.linkedin_url or (prefs.linkedin_url if prefs else None)
 
+    # Auto-scrape if no profile_text provided but URL exists
+    profile_text = body.profile_text
+    scrape_status = None
+
+    if not profile_text and linkedin_url:
+        from services.linkedin_scraper import scrape_linkedin_profile, LinkedInScrapeError
+        try:
+            profile_text = await scrape_linkedin_profile(linkedin_url)
+            scrape_status = "scraped"
+        except LinkedInScrapeError as exc:
+            logger.info("LinkedIn scrape failed for %s: %s", linkedin_url, exc)
+            scrape_status = "scrape_failed"
+
     result = await generate_linkedin_optimization(
         cv_data, target_roles,
         linkedin_url=linkedin_url,
-        profile_text=body.profile_text,
+        profile_text=profile_text,
+    )
+    result["_scrape_status"] = scrape_status or (
+        "user_provided" if body.profile_text else "no_url"
     )
     return result
 
