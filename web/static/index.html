@@ -883,6 +883,7 @@ header{
 const PHASES = {
   WELCOME:'welcome', CONNECTIONS:'connections',
   AWAITING_CV:'awaiting_cv', CV_PROCESSING:'cv_processing',
+  AWAITING_LINKEDIN:'awaiting_linkedin',
   AWAITING_ROLE:'awaiting_role', AWAITING_LOCATION:'awaiting_location',
   AWAITING_SALARY:'awaiting_salary', AWAITING_INDUSTRY:'awaiting_industry',
   AWAITING_SIZE:'awaiting_size', AWAITING_EMP:'awaiting_emp',
@@ -1031,10 +1032,10 @@ async function boot(){
     return;
   }
   localStorage.setItem('jm_last_visit', '0'); // reset for new onboarding
-  // Fresh user
+  // Fresh user — go straight to CV upload, then LinkedIn
   await addBotBubble(`👋 Welcome to **JobMate AI** — your AI career companion.\n\nI'll help you:\n• Tailor your CV for every role\n• Match and apply to jobs early\n• Track every application\n• Prep you for interviews\n• Optimize your LinkedIn for ATS\n\nLet's get you hired. 🎯`, {delay:300});
   await sleep(600);
-  await askConnections();
+  await askForCV();
 }
 
 async function askConnections(){
@@ -1254,15 +1255,66 @@ async function showCVScore(d){
   },100);
 
   await sleep(600);
-  await addBotBubble(`Great start, **${d.name||'there'}**! I can create a detailed improvement plan for your CV, or continue to job search.\n\nSkills I found: ${(d.skills||[]).slice(0,5).map(s=>`\`${s}\``).join(' ')}`);
+  await addBotBubble(`Great start, **${d.name||'there'}**! Skills I found: ${(d.skills||[]).slice(0,5).map(s=>`\`${s}\``).join(' ')}`);
   await sleep(500);
-  addButtons([
-    ['✨ Improve my CV','improve'],
-    ['Continue →','continue'],
-  ], async (val)=>{
-    if(val==='improve') await showCVImprovement();
-    else await askLocation();
-  });
+  await askLinkedInUrl();
+}
+
+async function askLinkedInUrl(){
+  phase = PHASES.AWAITING_LINKEDIN;
+  await addBotBubble(`🔗 **Now paste your LinkedIn profile URL** — I'll scan it and show you exactly what to improve.`);
+  const wrap=document.createElement('div');
+  wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
+  const card=document.createElement('div');
+  card.className='li-paste-wrap';
+  card.innerHTML=`
+    <div class="li-paste-header">🔗 Your LinkedIn Profile</div>
+    <input type="text" class="li-url-field" placeholder="https://linkedin.com/in/yourname"/>
+    <div class="li-paste-actions" style="margin-top:10px">
+      <button class="li-paste-btn">🔍 Scan My Profile</button>
+      <button class="li-skip-btn">Skip for now</button>
+    </div>`;
+  wrap.appendChild(card);
+  addBotRow(wrap, false);
+
+  const urlField=card.querySelector('.li-url-field');
+  const scanBtn=card.querySelector('.li-paste-btn');
+  const skipBtn=card.querySelector('.li-skip-btn');
+  urlField.focus();
+
+  scanBtn.onclick=async()=>{
+    const url=urlField.value.trim();
+    if(!url){urlField.style.borderColor='var(--danger)';return;}
+    let normalized=url;
+    if(!normalized.startsWith('http')) normalized='https://'+normalized;
+    prefs.linkedin_url=normalized;
+    scanBtn.disabled=true;
+    scanBtn.textContent='Scanning…';
+    addUserBubble(`🔗 ${normalized}`);
+    addTyping();
+    try {
+      const res=await api('/api/linkedin/optimize','POST',{
+        profile_text:null, linkedin_url:normalized,
+      });
+      removeTyping();
+      if(res._scrape_status==='scraped'){
+        await addBotBubble('🔍 **Scan complete!** Here\'s your section-by-section analysis:');
+      } else {
+        await addBotBubble('💼 **LinkedIn Tips** based on your CV:');
+      }
+      const resCard = buildLinkedInCard(res);
+      addBotRow(resCard, false);
+    } catch(e){
+      removeTyping();
+      await addBotBubble('💼 Couldn\'t scan right now — no worries, you can try again from the menu anytime.');
+    }
+    await sleep(400);
+    await askLocation();
+  };
+  skipBtn.onclick=async()=>{
+    addUserBubble('Skip');
+    await askLocation();
+  };
 }
 
 async function showCVImprovement(){
@@ -2884,7 +2936,7 @@ async function searchJobsByHistory(){
   }
 
   await sleep(800);
-  await showLinkedInOnboarding();
+  await confirmAndComplete();
 }
 
 async function showLinkedInOnboarding(){
