@@ -584,6 +584,94 @@ header{
 .li-exp-current{color:var(--text-muted);margin-bottom:2px}
 .li-exp-suggested{color:var(--accent)}
 
+/* ── LinkedIn paste UI ────────────────────────────── */
+.li-paste-wrap{
+  background:var(--surface2);border:1px solid #0a66c2;
+  border-radius:14px;padding:14px;margin-top:6px;max-width:88%;
+}
+.li-paste-header{
+  font-weight:600;font-size:13px;color:#0a66c2;margin-bottom:8px;
+}
+.li-paste-desc{
+  font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5;
+}
+.li-paste-steps{
+  font-size:11px;color:var(--text-dim);margin-bottom:10px;
+  padding:8px 12px;background:var(--surface);border-radius:8px;
+}
+.li-paste-steps ol{margin:0;padding-left:18px}
+.li-paste-steps li{margin-bottom:4px}
+.li-paste-area{
+  width:100%;min-height:120px;max-height:250px;
+  background:var(--input-bg);border:1px solid var(--border);
+  border-radius:8px;padding:10px;color:var(--text);
+  font-size:12px;font-family:inherit;resize:vertical;
+  outline:none;box-sizing:border-box;
+}
+.li-paste-area:focus{border-color:#0a66c2}
+.li-paste-area::placeholder{color:var(--text-muted)}
+.li-paste-actions{display:flex;gap:8px;margin-top:10px}
+.li-paste-btn{
+  background:#0a66c2;color:white;border:none;
+  border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;
+  cursor:pointer;flex:1;
+}
+.li-paste-btn:hover{background:#084d92}
+.li-paste-btn:disabled{opacity:.5;cursor:not-allowed}
+.li-skip-btn{
+  background:var(--surface);color:var(--text-muted);border:1px solid var(--border);
+  border-radius:8px;padding:8px 16px;font-size:12px;font-weight:500;
+  cursor:pointer;
+}
+.li-skip-btn:hover{border-color:var(--text-muted)}
+
+/* ── LinkedIn section-by-section cards ────────────── */
+.li-section-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;padding:12px;margin-bottom:8px;position:relative;
+}
+.li-section-card-head{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:8px;
+}
+.li-section-card-name{font-weight:600;font-size:12px;color:var(--text)}
+.li-priority-high{
+  font-size:9px;font-weight:600;padding:2px 8px;border-radius:20px;
+  background:rgba(239,68,68,.15);color:#ef4444;
+}
+.li-priority-medium{
+  font-size:9px;font-weight:600;padding:2px 8px;border-radius:20px;
+  background:rgba(245,158,11,.15);color:#f59e0b;
+}
+.li-priority-low{
+  font-size:9px;font-weight:600;padding:2px 8px;border-radius:20px;
+  background:rgba(16,217,160,.15);color:var(--accent);
+}
+.li-current-block{
+  background:var(--surface2);border-radius:6px;padding:8px 10px;
+  margin-bottom:6px;font-size:11px;color:var(--text-muted);
+  border-left:3px solid var(--border);line-height:1.5;
+}
+.li-improved-block{
+  background:rgba(10,102,194,.06);border-radius:6px;padding:8px 10px;
+  margin-bottom:6px;font-size:11px;color:var(--text);
+  border-left:3px solid #0a66c2;line-height:1.5;
+  white-space:pre-wrap;position:relative;
+}
+.li-issue-tag{
+  display:inline-block;background:rgba(239,68,68,.1);color:#f87171;
+  padding:2px 7px;border-radius:20px;font-size:10px;margin-right:4px;margin-top:4px;
+}
+.li-gap-tag{
+  display:inline-block;background:rgba(245,158,11,.1);color:#fbbf24;
+  padding:2px 7px;border-radius:20px;font-size:10px;margin-right:4px;margin-top:4px;
+}
+.li-missing-tag{
+  display:inline-block;background:rgba(239,68,68,.08);color:#f87171;
+  padding:3px 8px;border-radius:20px;font-size:10px;margin-right:4px;margin-top:4px;
+  border:1px dashed rgba(239,68,68,.3);
+}
+
 /* ── Notification badge ─────────────────────────────── */
 .notif-badge{
   position:absolute;top:-2px;right:-2px;
@@ -2400,17 +2488,66 @@ async function showCoach(message=''){
 // ─────────────────────────────────────────────────────────────────────────────
 async function showLinkedInOptimize(){
   if(phase!==PHASES.ACTIVE) return;
-  addTyping();
-  try {
-    const res=await api('/api/linkedin/optimize','POST',{});
-    removeTyping();
-    await addBotBubble('💼 **LinkedIn Profile Optimization** — copy these suggestions to your profile.');
-    const card = buildLinkedInCard(res);
-    addBotRow(card, false);
-  } catch(e) {
-    removeTyping();
-    await addBotBubble('❌ Couldn\'t generate LinkedIn tips. Make sure you\'ve uploaded a CV first.');
-  }
+  await addBotBubble('💼 **LinkedIn Profile Scanner** — I\'ll analyze your profile section by section.');
+  showLinkedInPasteUI(async (profileText)=>{
+    addTyping();
+    try {
+      const res=await api('/api/linkedin/optimize','POST',{
+        profile_text: profileText || null,
+        linkedin_url: prefs.linkedin_url || null,
+      });
+      removeTyping();
+      if(profileText){
+        await addBotBubble('🔍 **Scan complete!** Here\'s your section-by-section analysis:');
+      } else {
+        await addBotBubble('💼 **LinkedIn Tips** — based on your CV (paste your profile for a deeper scan):');
+      }
+      const card = buildLinkedInCard(res);
+      addBotRow(card, false);
+    } catch(e) {
+      removeTyping();
+      await addBotBubble('❌ Couldn\'t analyze LinkedIn profile. Make sure you\'ve uploaded a CV first.');
+    }
+  });
+}
+
+function showLinkedInPasteUI(callback){
+  const wrap=document.createElement('div');
+  wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
+  const card=document.createElement('div');
+  card.className='li-paste-wrap';
+  card.innerHTML=`
+    <div class="li-paste-header">📋 Paste Your LinkedIn Profile</div>
+    <div class="li-paste-steps">
+      <ol>
+        <li>Open your LinkedIn profile in a new tab</li>
+        <li>Press <strong>Ctrl+A</strong> (or Cmd+A) to select all</li>
+        <li>Press <strong>Ctrl+C</strong> (or Cmd+C) to copy</li>
+        <li>Click the box below and <strong>Ctrl+V</strong> to paste</li>
+      </ol>
+    </div>
+    <textarea class="li-paste-area" placeholder="Paste your LinkedIn profile text here..."></textarea>
+    <div class="li-paste-actions">
+      <button class="li-paste-btn">🔍 Analyze My Profile</button>
+      <button class="li-skip-btn">Skip — use my CV</button>
+    </div>`;
+  wrap.appendChild(card);
+  addBotRow(wrap, false);
+
+  const textarea=card.querySelector('.li-paste-area');
+  const analyzeBtn=card.querySelector('.li-paste-btn');
+  const skipBtn=card.querySelector('.li-skip-btn');
+
+  analyzeBtn.onclick=()=>{
+    const text=textarea.value.trim();
+    if(!text){textarea.style.borderColor='var(--danger)';return;}
+    analyzeBtn.disabled=true;
+    analyzeBtn.textContent='Analyzing...';
+    callback(text);
+  };
+  skipBtn.onclick=()=>{
+    callback(null);
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2714,29 +2851,39 @@ async function searchJobsByHistory(){
 
 async function showLinkedInOnboarding(){
   phase = PHASES.LINKEDIN_ONBOARDING;
-  await addBotBubble(`💼 **Let me optimize your LinkedIn for ATS...**\n\nThis helps recruiters find you faster.`);
-  addTyping();
-  try {
-    const res = await api('/api/linkedin/optimize','POST',{linkedin_url: prefs.linkedin_url || null});
-    removeTyping();
-    const card = buildLinkedInCard(res);
-    addBotRow(card, false);
+  await addBotBubble(`💼 **Let me scan your LinkedIn profile** — I'll show you exactly what to improve, section by section.`);
+  showLinkedInPasteUI(async (profileText)=>{
+    addTyping();
+    try {
+      const res = await api('/api/linkedin/optimize','POST',{
+        profile_text: profileText || null,
+        linkedin_url: prefs.linkedin_url || null,
+      });
+      removeTyping();
+      if(profileText){
+        await addBotBubble('🔍 **Scan complete!** Here\'s your section-by-section analysis:');
+      } else {
+        await addBotBubble('💼 **LinkedIn Tips** based on your CV:');
+      }
+      const card = buildLinkedInCard(res);
+      addBotRow(card, false);
 
-    await sleep(400);
-    addButtons([
-      ["✅ I've updated my profile",'done'],
-      ["⏭️ I'll do it later",'later'],
-    ], async (val)=>{
-      if(val==='done') addUserBubble("I've updated my LinkedIn!");
-      else addUserBubble("I'll do it later");
+      await sleep(400);
+      addButtons([
+        ["✅ I've updated my profile",'done'],
+        ["⏭️ I'll do it later",'later'],
+      ], async (val)=>{
+        if(val==='done') addUserBubble("I've updated my LinkedIn!");
+        else addUserBubble("I'll do it later");
+        await confirmAndComplete();
+      });
+    } catch(e){
+      removeTyping();
+      await addBotBubble(`💼 LinkedIn optimization requires a CV first. No worries — you can access it anytime from the menu!`);
+      await sleep(400);
       await confirmAndComplete();
-    });
-  } catch(e){
-    removeTyping();
-    await addBotBubble(`💼 LinkedIn optimization requires a CV first. No worries — you can access it anytime from the menu!`);
-    await sleep(400);
-    await confirmAndComplete();
-  }
+    }
+  });
 }
 
 async function confirmAndComplete(){
@@ -2769,14 +2916,15 @@ function buildLinkedInCard(res){
   wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
   const card=document.createElement('div');
   card.className='li-card';
-  card.innerHTML='<div class="li-header">💼 LinkedIn Optimizer</div>';
+  card.innerHTML='<div class="li-header">💼 LinkedIn Profile Analysis</div>';
 
   // Profile score
-  if(res.profile_strength_score){
+  const score = res.profile_score || res.profile_strength_score || 0;
+  if(score){
     const scoreBar=document.createElement('div');
     scoreBar.className='ats-bar';
     const circum=2*Math.PI*16;
-    const offset=circum-(res.profile_strength_score/100)*circum;
+    const offset=circum-(score/100)*circum;
     scoreBar.innerHTML=`
       <div class="ats-ring">
         <svg width="44" height="44" viewBox="0 0 44 44">
@@ -2785,16 +2933,108 @@ function buildLinkedInCard(res){
             stroke-dasharray="${circum}" stroke-dashoffset="${offset}"
             stroke-linecap="round" style="transform:rotate(-90deg);transform-origin:center"/>
         </svg>
-        <div class="ats-ring-num" style="color:#0a66c2">${res.profile_strength_score}</div>
+        <div class="ats-ring-num" style="color:#0a66c2">${score}</div>
       </div>
       <div>
-        <div style="font-size:12px;font-weight:600;color:var(--text)">Profile Strength: ${res.profile_strength_score}/100</div>
+        <div style="font-size:12px;font-weight:600;color:var(--text)">Profile Score: ${score}/100</div>
+        ${res.overall_summary?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${res.overall_summary}</div>`:''}
       </div>`;
     card.appendChild(scoreBar);
   }
 
-  // Headlines
-  if(res.headline_suggestions?.length){
+  // Section-by-section analysis (new format)
+  if(res.sections&&res.sections.length){
+    const sec=document.createElement('div');
+    sec.className='li-section';
+    sec.innerHTML='<div class="li-section-title">🔍 Section-by-Section Analysis</div>';
+    res.sections.forEach(s=>{
+      const sc=document.createElement('div');
+      sc.className='li-section-card';
+      const prioClass=s.priority==='high'?'li-priority-high':s.priority==='medium'?'li-priority-medium':'li-priority-low';
+      sc.innerHTML=`<div class="li-section-card-head">
+        <span class="li-section-card-name">${s.name||'Section'}</span>
+        <span class="${prioClass}">${(s.priority||'medium').toUpperCase()}</span>
+      </div>`;
+
+      // Current
+      if(s.current){
+        const cur=document.createElement('div');
+        cur.innerHTML=`<div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">CURRENT:</div>`;
+        const curBlock=document.createElement('div');
+        curBlock.className='li-current-block';
+        curBlock.textContent=s.current;
+        cur.appendChild(curBlock);
+        sc.appendChild(cur);
+      }
+
+      // Improved
+      if(s.improved){
+        const imp=document.createElement('div');
+        imp.innerHTML=`<div style="font-size:10px;font-weight:600;color:#0a66c2;margin-bottom:3px">IMPROVED:</div>`;
+        const impBlock=document.createElement('div');
+        impBlock.className='li-improved-block';
+        impBlock.textContent=s.improved;
+        const cb=document.createElement('button');
+        cb.className='copy-btn';cb.style.cssText='position:absolute;top:4px;right:4px';
+        cb.textContent='Copy';
+        cb.onclick=()=>{navigator.clipboard.writeText(s.improved);cb.textContent='Copied!';setTimeout(()=>cb.textContent='Copy',1500)};
+        impBlock.appendChild(cb);
+        imp.appendChild(impBlock);
+        sc.appendChild(imp);
+      }
+
+      // Issues
+      if(s.issues&&s.issues.length){
+        const issWrap=document.createElement('div');
+        issWrap.style.marginTop='4px';
+        s.issues.forEach(iss=>{
+          const tag=document.createElement('span');
+          tag.className='li-issue-tag';
+          tag.textContent=iss;
+          issWrap.appendChild(tag);
+        });
+        sc.appendChild(issWrap);
+      }
+
+      sec.appendChild(sc);
+    });
+    card.appendChild(sec);
+  }
+
+  // Missing sections
+  if(res.missing_sections&&res.missing_sections.length){
+    const sec=document.createElement('div');
+    sec.className='li-section';
+    sec.innerHTML='<div class="li-section-title">❌ Missing Sections</div>';
+    const tagWrap=document.createElement('div');
+    res.missing_sections.forEach(ms=>{
+      const tag=document.createElement('span');
+      tag.className='li-missing-tag';
+      tag.textContent='+ '+ms;
+      tagWrap.appendChild(tag);
+    });
+    sec.appendChild(tagWrap);
+    card.appendChild(sec);
+  }
+
+  // Keyword gaps
+  if(res.keyword_gaps&&res.keyword_gaps.length){
+    const sec=document.createElement('div');
+    sec.className='li-section';
+    sec.innerHTML='<div class="li-section-title">🔑 Keywords to Add</div>';
+    const tagWrap=document.createElement('div');
+    res.keyword_gaps.forEach(kw=>{
+      const tag=document.createElement('span');
+      tag.className='li-gap-tag';
+      tag.textContent=kw;
+      tagWrap.appendChild(tag);
+    });
+    sec.appendChild(tagWrap);
+    card.appendChild(sec);
+  }
+
+  // Legacy: headline suggestions (CV-only mode)
+  if(res.headline_suggestions&&res.headline_suggestions.length&&(!res.sections||!res.sections.length)){
     const sec=document.createElement('div');
     sec.className='li-section';
     sec.innerHTML='<div class="li-section-title">📝 Headline Suggestions</div>';
@@ -2811,43 +3051,8 @@ function buildLinkedInCard(res){
     card.appendChild(sec);
   }
 
-  // About section
-  if(res.about_section){
-    const sec=document.createElement('div');
-    sec.className='li-section';
-    sec.innerHTML='<div class="li-section-title">👤 About Section Draft</div>';
-    const about=document.createElement('div');
-    about.className='li-about';
-    about.textContent=res.about_section;
-    const cb=document.createElement('button');
-    cb.className='copy-btn';
-    cb.style.cssText='position:absolute;top:6px;right:6px';
-    about.style.position='relative';
-    cb.textContent='Copy';
-    cb.onclick=()=>{navigator.clipboard.writeText(res.about_section);cb.textContent='Copied!';setTimeout(()=>cb.textContent='Copy',1500)};
-    about.appendChild(cb);
-    sec.appendChild(about);
-    card.appendChild(sec);
-  }
-
-  // Experience tips
-  if(res.experience_tips?.length){
-    const sec=document.createElement('div');
-    sec.className='li-section';
-    sec.innerHTML='<div class="li-section-title">💼 Experience Optimization</div>';
-    res.experience_tips.forEach(tip=>{
-      const el=document.createElement('div');
-      el.className='li-exp-tip';
-      el.innerHTML=`<div class="li-exp-role">${tip.role||'Role'}</div>
-        ${tip.current?`<div class="li-exp-current">Current: ${tip.current}</div>`:''}
-        <div class="li-exp-suggested">→ ${tip.suggested}</div>`;
-      sec.appendChild(el);
-    });
-    card.appendChild(sec);
-  }
-
-  // Skills to add
-  if(res.skills_to_add?.length){
+  // Legacy: skills to add (always show if present)
+  if(res.skills_to_add&&res.skills_to_add.length){
     const sec=document.createElement('div');
     sec.className='li-section';
     sec.innerHTML='<div class="li-section-title">🏷️ Skills to Add</div>';
@@ -2860,25 +3065,6 @@ function buildLinkedInCard(res){
       tags.appendChild(tag);
     });
     sec.appendChild(tags);
-    card.appendChild(sec);
-  }
-
-  // Section checklist
-  if(res.section_checklist?.length){
-    const sec=document.createElement('div');
-    sec.className='li-section';
-    sec.innerHTML='<div class="li-section-title">✅ Section Checklist</div>';
-    const ul=document.createElement('ul');
-    ul.className='li-checklist';
-    res.section_checklist.forEach((item,i)=>{
-      const li=document.createElement('li');
-      const statusIcon=item.status==='good'?'✅':item.status==='missing'?'❌':'⚠️';
-      const uid=`li-chk-${Date.now()}-${i}`;
-      li.innerHTML=`<span class="li-check" id="${uid}" onclick="this.classList.toggle('checked');this.textContent=this.classList.contains('checked')?'✓':''"></span>
-        ${statusIcon} <strong>${item.section}</strong>: ${item.action}`;
-      ul.appendChild(li);
-    });
-    sec.appendChild(ul);
     card.appendChild(sec);
   }
 

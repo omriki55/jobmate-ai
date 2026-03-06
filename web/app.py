@@ -294,6 +294,7 @@ class CoachBody(BaseModel):
 
 class LinkedInOptimizeBody(BaseModel):
     linkedin_url: Optional[str] = None
+    profile_text: Optional[str] = None
 
 
 class EmailTemplatesBody(BaseModel):
@@ -1149,7 +1150,11 @@ async def optimize_linkedin(
         target_roles = prefs.target_roles if prefs else []
         linkedin_url = body.linkedin_url or (prefs.linkedin_url if prefs else None)
 
-    result = await generate_linkedin_optimization(cv_data, target_roles, linkedin_url=linkedin_url)
+    result = await generate_linkedin_optimization(
+        cv_data, target_roles,
+        linkedin_url=linkedin_url,
+        profile_text=body.profile_text,
+    )
     return result
 
 

@@ -97,9 +97,9 @@ async def test_linkedin_optimizer_fallback():
     assert len(result["headline_suggestions"]) == 3
     assert len(result["about_section"]) > 100
     assert "skills_to_add" in result
-    assert "profile_strength_score" in result
-    assert "section_checklist" in result
-    assert len(result["section_checklist"]) >= 5
+    assert "profile_score" in result
+    assert "sections" in result
+    assert len(result["sections"]) >= 1
 
 
 # ---------------------------------------------------------------------------
