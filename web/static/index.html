@@ -1257,7 +1257,38 @@ async function showCVScore(d){
   await sleep(600);
   await addBotBubble(`Great start, **${d.name||'there'}**! Skills I found: ${(d.skills||[]).slice(0,5).map(s=>`\`${s}\``).join(' ')}`);
   await sleep(500);
-  await askLinkedInUrl();
+
+  // If LinkedIn URL was extracted from CV, auto-scan it
+  if(d.linkedin_url){
+    prefs.linkedin_url = d.linkedin_url;
+    await autoScanLinkedIn(d.linkedin_url);
+  } else {
+    await askLinkedInUrl();
+  }
+}
+
+async function autoScanLinkedIn(url){
+  phase = PHASES.AWAITING_LINKEDIN;
+  await addBotBubble(`🔗 Found your LinkedIn: **${url.replace('https://','').replace('www.','')}** — scanning now…`);
+  addTyping();
+  try {
+    const res=await api('/api/linkedin/optimize','POST',{
+      profile_text:null, linkedin_url:url,
+    });
+    removeTyping();
+    if(res._scrape_status==='scraped'){
+      await addBotBubble('🔍 **Scan complete!** Here\'s your section-by-section analysis:');
+    } else {
+      await addBotBubble('💼 **LinkedIn Tips** based on your CV:');
+    }
+    const resCard = buildLinkedInCard(res);
+    addBotRow(resCard, false);
+  } catch(e){
+    removeTyping();
+    await addBotBubble('💼 Couldn\'t scan right now — no worries, you can try again from the menu anytime.');
+  }
+  await sleep(400);
+  await askLocation();
 }
 
 async function askLinkedInUrl(){

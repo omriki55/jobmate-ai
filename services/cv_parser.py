@@ -2,10 +2,13 @@
 CV Parser — extracts raw text from PDF/DOCX then calls Claude to produce
 a structured JSON profile used throughout the app.
 """
+from __future__ import annotations
+
 import io
 import json
 import asyncio
 import logging
+import re
 
 import pdfplumber
 from docx import Document
@@ -29,6 +32,21 @@ def _extract_pdf(file_bytes: bytes) -> str:
 def _extract_docx(file_bytes: bytes) -> str:
     doc = Document(io.BytesIO(file_bytes))
     return "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
+
+
+def extract_linkedin_url(text: str) -> str | None:
+    """Find a LinkedIn profile URL in raw CV text."""
+    m = re.search(
+        r"(?:https?://)?(?:www\.)?linkedin\.com/in/[\w\-%.]+",
+        text,
+        re.IGNORECASE,
+    )
+    if not m:
+        return None
+    url = m.group(0)
+    if not url.startswith("http"):
+        url = "https://" + url
+    return url.rstrip("/")
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +161,8 @@ async def parse_cv_with_claude(cv_text: str) -> dict:
 async def process_cv(file_bytes: bytes, file_name: str) -> tuple[str, dict]:
     """
     Extract text from a CV file and parse it with Claude.
-    Returns (raw_text, parsed_data).
+    Returns (raw_text, parsed_data).  parsed_data includes 'linkedin_url'
+    if one was found in the CV text.
     Raises ValueError for unreadable/too-short content.
     """
     loop = asyncio.get_event_loop()
@@ -165,4 +184,10 @@ async def process_cv(file_bytes: bytes, file_name: str) -> tuple[str, dict]:
         )
 
     parsed_data = await parse_cv_with_claude(raw_text)
+
+    # Extract LinkedIn URL from CV text if present
+    li_url = extract_linkedin_url(raw_text)
+    if li_url:
+        parsed_data["linkedin_url"] = li_url
+
     return raw_text, parsed_data

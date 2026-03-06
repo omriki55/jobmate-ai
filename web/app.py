@@ -412,6 +412,7 @@ async def upload_cv(
         "skills":                parsed.get("skills", [])[:8],
         "improvement_notes":     parsed.get("improvement_notes", [])[:3],
         "summary":               parsed.get("summary", ""),
+        "linkedin_url":          parsed.get("linkedin_url"),
     }
 
 
