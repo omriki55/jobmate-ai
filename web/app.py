@@ -522,6 +522,10 @@ async def upload_cv(
         "improvement_notes":     parsed.get("improvement_notes", [])[:3],
         "summary":               parsed.get("summary", ""),
         "linkedin_url":          parsed.get("linkedin_url"),
+        "phone":                 parsed.get("phone"),
+        "location":              parsed.get("location"),
+        "detected_country":      parsed.get("detected_country"),
+        "experience":            parsed.get("experience", [])[:10],
     }
 
 

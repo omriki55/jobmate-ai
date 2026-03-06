@@ -102,6 +102,163 @@ Rules:
 - Return ONLY the JSON object, nothing else."""
 
 
+def _extract_phone(cv_text: str) -> str | None:
+    """Extract first phone number from CV text."""
+    import re
+    m = re.search(
+        r"(?:\+?\d{1,3}[\s\-.]?)?\(?\d{2,4}\)?[\s\-.]?\d{3,4}[\s\-.]?\d{3,4}",
+        cv_text,
+    )
+    return m.group(0).strip() if m else None
+
+
+def _detect_country(phone: str | None, cv_text: str) -> str | None:
+    """Detect country from phone prefix or location keywords in CV text."""
+    import re
+    # Phone prefix detection
+    if phone:
+        clean = re.sub(r"[\s\-.()\u200e\u200f]", "", phone)
+        prefix_map = {
+            "+972": "Israel", "972": "Israel",
+            "+1": "United States", "+44": "United Kingdom",
+            "+49": "Germany", "+33": "France", "+91": "India",
+            "+61": "Australia", "+81": "Japan", "+86": "China",
+            "+55": "Brazil", "+34": "Spain", "+39": "Italy",
+            "+31": "Netherlands", "+46": "Sweden", "+41": "Switzerland",
+            "+48": "Poland", "+351": "Portugal", "+353": "Ireland",
+            "+32": "Belgium", "+43": "Austria", "+45": "Denmark",
+            "+47": "Norway", "+358": "Finland", "+64": "New Zealand",
+            "+65": "Singapore", "+82": "South Korea", "+7": "Russia",
+            "+380": "Ukraine", "+90": "Turkey", "+971": "UAE",
+        }
+        for prefix, country in prefix_map.items():
+            if clean.startswith(prefix):
+                return country
+        # Israeli mobile numbers: 05x-xxx-xxxx
+        if re.match(r"^0[5][0-9]", clean):
+            return "Israel"
+
+    # Location keywords in text
+    text_lower = cv_text.lower()
+    country_kw = {
+        "israel": "Israel", "tel aviv": "Israel", "jerusalem": "Israel",
+        "haifa": "Israel", "herzliya": "Israel", "ramat gan": "Israel",
+        "rishon": "Israel", "petah tikva": "Israel", "beer sheva": "Israel",
+        "netanya": "Israel", "rehovot": "Israel", "ra'anana": "Israel",
+        "kfar saba": "Israel", "bnei brak": "Israel", "ashdod": "Israel",
+        "new york": "United States", "san francisco": "United States",
+        "los angeles": "United States", "chicago": "United States",
+        "seattle": "United States", "austin": "United States",
+        "boston": "United States", "miami": "United States",
+        "london": "United Kingdom", "manchester": "United Kingdom",
+        "berlin": "Germany", "munich": "Germany",
+        "paris": "France", "amsterdam": "Netherlands",
+    }
+    for kw, country in country_kw.items():
+        if kw in text_lower:
+            return country
+    return None
+
+
+def _extract_job_titles(cv_text: str) -> list[dict]:
+    """Extract job titles and companies from CV experience sections."""
+    import re
+    experience = []
+    lines = cv_text.splitlines()
+
+    # Title keywords that indicate a job role
+    title_kw = (
+        r"(?:senior|junior|lead|principal|staff|chief|head|vp|director|manager|intern|"
+        r"software|full[\s-]?stack|front[\s-]?end|back[\s-]?end|mobile|web|cloud|data|devops|ml|ai|qa|"
+        r"product|project|program|marketing|sales|business|account|customer|hr|finance|"
+        r"ui/?ux|design|graphic|content|seo|growth|operations|logistics|supply|"
+        r"mechanical|electrical|civil|chemical|bio|research|analyst|"
+        r"engineer|developer|architect|scientist|consultant|specialist|coordinator|associate|"
+        r"officer|administrator|executive|strategist|planner|recruiter|"
+        r"team[\s-]?lead|tech[\s-]?lead|cto|ceo|cfo|coo|cmo)"
+    )
+
+    for line in lines:
+        line_stripped = line.strip()
+        if not line_stripped or len(line_stripped) > 120 or len(line_stripped) < 4:
+            continue
+        # Skip section headers
+        if line_stripped.lower() in ("experience", "education", "skills", "summary", "about", "projects", "certifications"):
+            continue
+
+        # Try "Title at/@ Company" pattern first
+        m = re.match(
+            r"^(.+?)\s+(?:at|@)\s+(.+?)(?:\s*[\|,\-–]\s*\d{4}.*)?$",
+            line_stripped, re.IGNORECASE,
+        )
+        if m:
+            title_candidate = m.group(1).strip()
+            company = m.group(2).strip()
+            if re.search(title_kw, title_candidate, re.IGNORECASE):
+                experience.append({
+                    "title": title_candidate,
+                    "company": company,
+                    "start_date": None, "end_date": None,
+                    "description": "", "skills_used": [],
+                })
+                continue
+
+        # Try "Title, Company" or "Title | Company"
+        m = re.match(
+            r"^(.+?)\s*[\|,\-–]\s+(.+?)(?:\s*[\|,\-–]\s*\d{4}.*)?$",
+            line_stripped, re.IGNORECASE,
+        )
+        if m:
+            title_candidate = m.group(1).strip()
+            if re.search(title_kw, title_candidate, re.IGNORECASE) and len(title_candidate) < 60:
+                experience.append({
+                    "title": title_candidate,
+                    "company": m.group(2).strip(),
+                    "start_date": None, "end_date": None,
+                    "description": "", "skills_used": [],
+                })
+                continue
+
+        # Try standalone title line (no company)
+        # Must end with a role word and not contain description verbs
+        role_endings = r"(?:engineer|developer|architect|manager|director|analyst|designer|lead|specialist|consultant|coordinator|officer|intern|recruiter|strategist|planner|scientist|administrator|executive|cto|ceo|cfo|coo|cmo)s?\b"
+        desc_words = r"\b(?:built|designed|developed|managed|led|created|implemented|worked|responsible|utilizing|using|with|for|and|the|in)\b"
+        if (re.match(r"^" + title_kw, line_stripped, re.IGNORECASE)
+                and re.search(role_endings, line_stripped, re.IGNORECASE)
+                and not re.search(desc_words, line_stripped, re.IGNORECASE)
+                and not line_stripped.startswith(("•", "-", "*", "·"))
+                and len(line_stripped) < 45):
+            experience.append({
+                "title": line_stripped,
+                "company": "",
+                "start_date": None, "end_date": None,
+                "description": "", "skills_used": [],
+            })
+
+    return experience[:10]
+
+
+def _extract_location(cv_text: str) -> str | None:
+    """Extract location from CV text."""
+    import re
+    # Common patterns: "City, Country" or "City, State" near top of CV
+    lines = cv_text.splitlines()[:15]  # Usually in header
+    for line in lines:
+        line = line.strip()
+        # Match patterns like "Tel Aviv, Israel" or "New York, NY"
+        m = re.search(
+            r"([\w\s'\-\.]+,\s*(?:Israel|USA|US|UK|Germany|France|India|"
+            r"Canada|Australia|Netherlands|Spain|Italy|Sweden|Switzerland|"
+            r"Singapore|Japan|Brazil|Ireland|Poland|Portugal|Austria|"
+            r"Belgium|Denmark|Norway|Finland|UAE|Turkey|"
+            r"[A-Z]{2}))\b",
+            line,
+        )
+        if m:
+            return m.group(1).strip()
+    return None
+
+
 def _mock_parsed(cv_text: str) -> dict:
     """Best-effort keyword parse when Claude is unavailable."""
     import re
@@ -114,10 +271,17 @@ def _mock_parsed(cv_text: str) -> dict:
     tech_kw = ["python","javascript","react","sql","java","typescript","aws","docker","kubernetes",
                 "product","design","marketing","sales","data","machine learning","devops"]
     skills = [k for k in tech_kw if k in cv_text.lower()][:10]
+
+    phone = _extract_phone(cv_text)
+    country = _detect_country(phone, cv_text)
+    location = _extract_location(cv_text) or country
+    experience = _extract_job_titles(cv_text)
+
     return {
-        "name": name, "email": None, "phone": None, "location": None,
+        "name": name, "email": None, "phone": phone, "location": location,
+        "detected_country": country,
         "summary": f"Experienced professional with background in {', '.join(skills[:3]) or 'various domains'}.",
-        "experience": [], "education": [], "skills": skills, "languages": [],
+        "experience": experience, "education": [], "skills": skills, "languages": [],
         "total_years_experience": years, "seniority_level": "mid",
         "primary_domain": skills[0] if skills else "professional",
         "cv_score": 55,

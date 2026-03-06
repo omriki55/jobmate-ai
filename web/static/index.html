@@ -7,25 +7,26 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0a0f1e;
-  --surface:#111827;
-  --surface2:#1a2235;
-  --header:#0d1526;
-  --accent:#10d9a0;
-  --accent-dim:#0ea87c;
-  --user-bubble:#0d4a3e;
-  --bot-bubble:#1a2235;
-  --text:#e2e8f0;
+  --bg:#f5f7fa;
+  --surface:#ffffff;
+  --card-width:88%;
+  --surface2:#f0f2f5;
+  --header:#ffffff;
+  --accent:#10b981;
+  --accent-dim:#059669;
+  --user-bubble:#d1fae5;
+  --bot-bubble:#f0f2f5;
+  --text:#1e293b;
   --text-muted:#64748b;
-  --text-dim:#94a3b8;
-  --border:#1e2d45;
-  --input-bg:#111827;
-  --btn-bg:#1a2235;
-  --btn-hover:#243048;
+  --text-dim:#475569;
+  --border:#e2e8f0;
+  --input-bg:#ffffff;
+  --btn-bg:#f1f5f9;
+  --btn-hover:#e2e8f0;
   --danger:#ef4444;
-  --warning:#f59e0b;
+  --warning:#d97706;
   --success:#10b981;
-  --tag-bg:rgba(16,217,160,.12);
+  --tag-bg:rgba(16,185,129,.1);
 }
 html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);overflow:hidden}
 
@@ -37,6 +38,7 @@ header{
   display:flex;align-items:center;gap:12px;
   padding:12px 18px;background:var(--header);
   border-bottom:1px solid var(--border);
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
   flex-shrink:0;position:relative;z-index:10;
 }
 .avatar{
@@ -98,12 +100,12 @@ header{
   line-height:1.55;font-size:14px;word-break:break-word;
 }
 .bot .bubble{
-  background:var(--bot-bubble);border-bottom-left-radius:4px;
-  color:var(--text);
+  background:#ffffff;border:1px solid var(--border);border-bottom-left-radius:4px;
+  color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.04);
 }
 .user .bubble{
-  background:var(--user-bubble);border-bottom-right-radius:4px;
-  color:var(--text);
+  background:var(--accent);border-bottom-right-radius:4px;
+  color:#ffffff;
 }
 .bubble strong{color:var(--accent)}
 .bubble em{color:var(--text-dim);font-style:normal}
@@ -115,9 +117,10 @@ header{
 /* ── Inline keyboard buttons ─────────────────────────── */
 .kb-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .kb-btn{
-  background:var(--btn-bg);border:1px solid var(--border);
+  background:#ffffff;border:1px solid var(--border);
   color:var(--text);border-radius:10px;padding:7px 14px;
   font-size:13px;cursor:pointer;transition:.15s;
+  box-shadow:0 1px 2px rgba(0,0,0,.04);
 }
 .kb-btn:hover{background:var(--btn-hover);border-color:var(--accent);color:var(--accent)}
 .kb-btn:disabled{opacity:.4;cursor:default}
@@ -125,9 +128,10 @@ header{
 
 /* ── Job cards ───────────────────────────────────────── */
 .job-card{
-  background:var(--surface2);border:1px solid var(--border);
+  background:var(--surface);border:1px solid var(--border);
   border-radius:14px;padding:14px;margin-top:8px;
   transition:.15s;max-width:100%;
+  box-shadow:0 1px 3px rgba(0,0,0,.05);
 }
 .job-card:hover{border-color:var(--accent)}
 .job-title{font-weight:600;font-size:14px;margin-bottom:4px}
@@ -184,7 +188,7 @@ header{
   display:flex;align-items:flex-start;gap:10px;padding:12px 14px;
   cursor:pointer;user-select:none;
 }
-.qa-header:hover{background:rgba(255,255,255,.02)}
+.qa-header:hover{background:rgba(0,0,0,.03)}
 .qa-cat{
   font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;
   flex-shrink:0;margin-top:1px;text-transform:uppercase;
@@ -207,8 +211,8 @@ header{
 
 /* ── Digest card ─────────────────────────────────────── */
 .digest-card{
-  background:linear-gradient(135deg,rgba(16,217,160,.08),rgba(16,217,160,.02));
-  border:1px solid rgba(16,217,160,.3);border-radius:14px;
+  background:linear-gradient(135deg,rgba(16,185,129,.08),rgba(16,185,129,.03));
+  border:1px solid rgba(16,185,129,.25);border-radius:14px;
   padding:14px;margin-top:6px;
 }
 .digest-title{font-size:14px;font-weight:700;color:var(--accent);margin-bottom:6px}
@@ -271,7 +275,8 @@ header{
 /* ── Input area ──────────────────────────────────────── */
 #input-area{
   display:flex;align-items:center;gap:8px;padding:12px 16px;
-  background:var(--header);border-top:1px solid var(--border);flex-shrink:0;
+  background:var(--header);border-top:1px solid var(--border);
+  box-shadow:0 -1px 3px rgba(0,0,0,.04);flex-shrink:0;
 }
 #msg-input{
   flex:1;background:var(--input-bg);border:1px solid var(--border);
@@ -450,7 +455,7 @@ header{
 .sim-submit:disabled{opacity:.5;cursor:default}
 
 .feedback-card{
-  background:rgba(16,217,160,.06);border:1px solid rgba(16,217,160,.2);
+  background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);
   border-radius:12px;padding:12px;margin-top:8px;
 }
 .feedback-score{
@@ -515,8 +520,8 @@ header{
 
 /* ── Coach card ─────────────────────────────────────── */
 .coach-card{
-  background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(139,92,246,.02));
-  border:1px solid rgba(139,92,246,.3);border-radius:14px;
+  background:linear-gradient(135deg,rgba(139,92,246,.06),rgba(139,92,246,.02));
+  border:1px solid rgba(139,92,246,.2);border-radius:14px;
   padding:14px;margin-top:6px;max-width:88%;
 }
 .coach-mood{font-size:12px;margin-bottom:8px}
@@ -850,6 +855,56 @@ header{
 .cal-day:last-child{border-bottom:none}
 .cal-day-name{font-weight:600;color:var(--text);min-width:80px}
 .cal-day-activity{color:var(--text-dim);flex:1}
+/* Onboarding progress bar */
+.onboarding-progress{
+  display:flex;gap:3px;padding:8px 18px;background:var(--header);
+  border-bottom:1px solid var(--border);
+}
+.ob-step{flex:1;height:3px;border-radius:2px;background:var(--border);transition:background .3s}
+.ob-step.done{background:var(--accent)}
+.ob-step.current{background:var(--warning)}
+.ob-step-label{
+  display:none;font-size:9px;color:var(--text-dim);text-align:center;margin-top:2px;
+}
+/* Scroll-to-bottom button */
+#scroll-to-bottom{
+  position:fixed;bottom:80px;right:calc(50% - 400px);
+  background:var(--accent);color:#0a0f1e;
+  border:none;border-radius:50%;width:36px;height:36px;
+  font-size:16px;cursor:pointer;display:none;
+  box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:5;
+  transition:opacity .2s;
+}
+#scroll-to-bottom:hover{opacity:.8}
+/* Applied button state */
+.job-apply.applied{background:var(--success);opacity:1;pointer-events:none}
+/* Mobile responsive */
+@media(max-width:600px){
+  #app{max-width:100%;border:none}
+  header{padding:10px 12px;gap:8px;flex-wrap:wrap}
+  .header-actions{
+    width:100%;overflow-x:auto;gap:6px;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .header-actions::-webkit-scrollbar{display:none}
+  .header-btn{padding:5px 10px;font-size:11px;white-space:nowrap}
+  .avatar{width:34px;height:34px;font-size:16px}
+  #messages{padding:14px 10px}
+  .bubble{max-width:85%;font-size:13px}
+  .tailor-card,.sim-card,.hh-card,.li-card,.coach-card,.digest-card{max-width:95%!important}
+  #input-area{padding:8px 10px;gap:6px}
+  #msg-input{padding:8px 12px;font-size:13px}
+  #send-btn{width:36px;height:36px;font-size:16px}
+  .job-card{padding:10px}
+  .kanban{flex-direction:column}
+  .kanban-col{min-width:unset}
+  .stat-grid{grid-template-columns:1fr 1fr}
+  .onboarding-progress{padding:6px 10px}
+  #scroll-to-bottom{right:20px}
+  .kb-row{gap:4px}
+  .kb-btn{padding:6px 10px;font-size:12px}
+}
 </style>
 </head>
 <body>
@@ -912,6 +967,32 @@ let cvData = null;      // parsed CV result
 let pendingMatches = []; // current match list
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Onboarding progress bar
+// ─────────────────────────────────────────────────────────────────────────────
+const ONBOARD_STEPS = ['cv','linkedin','roles','location','salary','industry','size','employment','confirm'];
+function updateProgress(stepName){
+  let bar = document.getElementById('onboarding-progress');
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id='onboarding-progress';
+    bar.className='onboarding-progress';
+    ONBOARD_STEPS.forEach(s=>{
+      const d=document.createElement('div');
+      d.className='ob-step';d.dataset.step=s;
+      bar.appendChild(d);
+    });
+    document.querySelector('header').after(bar);
+  }
+  const idx = ONBOARD_STEPS.indexOf(stepName);
+  bar.querySelectorAll('.ob-step').forEach((el,i)=>{
+    el.className = 'ob-step' + (i<idx?' done':i===idx?' current':'');
+  });
+}
+function removeProgress(){
+  document.getElementById('onboarding-progress')?.remove();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DOM helpers
 // ─────────────────────────────────────────────────────────────────────────────
 const $msgs = document.getElementById('messages');
@@ -921,8 +1002,23 @@ const $fileInput = document.getElementById('file-input');
 const $nav = document.getElementById('nav-btns');
 
 function scrollBottom(){ $msgs.scrollTop = $msgs.scrollHeight; }
+function isNearBottom(){ return $msgs.scrollHeight - $msgs.scrollTop - $msgs.clientHeight < 150; }
+
+// Scroll-to-bottom floating button
+const $scrollBtn = document.createElement('button');
+$scrollBtn.id='scroll-to-bottom';$scrollBtn.textContent='↓';
+document.getElementById('app').appendChild($scrollBtn);
+$scrollBtn.onclick=()=>{ scrollBottom(); $scrollBtn.style.display='none'; };
+$msgs.addEventListener('scroll',()=>{
+  $scrollBtn.style.display = isNearBottom() ? 'none' : 'block';
+});
 
 function addBotRow(contentEl, showAvatar=true){
+  // Auto-hide avatar if previous message is also from bot
+  if(showAvatar){
+    const last = $msgs.lastElementChild;
+    if(last && last.classList.contains('bot')) showAvatar = false;
+  }
   const row = document.createElement('div');
   row.className = 'msg-row bot';
   const av = document.createElement('div');
@@ -931,7 +1027,8 @@ function addBotRow(contentEl, showAvatar=true){
   row.appendChild(av);
   row.appendChild(contentEl);
   $msgs.appendChild(row);
-  scrollBottom();
+  if(isNearBottom()) scrollBottom();
+  else $scrollBtn.style.display='block';
   return row;
 }
 
@@ -1183,6 +1280,7 @@ async function askConnections(){
 
 async function askForCV(){
   phase = PHASES.AWAITING_CV;
+  updateProgress('cv');
   await addBotBubble(`**Send me your CV.**\n\nDrop a PDF, DOCX, or plain text file below — I'll score it and tell you exactly how to improve it.`);
   // Render drop zone inside a bot row
   const dz = buildDropZone();
@@ -1265,7 +1363,34 @@ async function showCVScore(d){
   },100);
 
   await sleep(600);
-  await addBotBubble(`Great start, **${d.name||'there'}**! Skills I found: ${(d.skills||[]).slice(0,5).map(s=>`\`${s}\``).join(' ')}`);
+
+  // Store detected country and experience from CV
+  if(d.detected_country) prefs.detected_country = d.detected_country;
+  if(d.location) prefs.cv_location = d.location;
+  if(d.phone) prefs.cv_phone = d.phone;
+
+  // Extract recurring job titles from experience
+  const exp = d.experience || [];
+  if(exp.length){
+    const titleCounts = {};
+    exp.forEach(e => {
+      const t = (e.title||'').trim();
+      if(t) titleCounts[t] = (titleCounts[t]||0) + 1;
+    });
+    // Sort by frequency, then take top 3
+    const sortedTitles = Object.entries(titleCounts)
+      .sort((a,b) => b[1] - a[1])
+      .map(([t]) => t)
+      .slice(0, 3);
+    if(sortedTitles.length) prefs.detected_roles = sortedTitles;
+  }
+
+  // Build enriched summary
+  let extraInfo = '';
+  if(d.detected_country) extraInfo += `\n📍 Detected location: **${d.location || d.detected_country}**`;
+  if(prefs.detected_roles?.length) extraInfo += `\n🎯 Recurring roles: ${prefs.detected_roles.map(r=>`\`${r}\``).join(', ')}`;
+
+  await addBotBubble(`Great start, **${d.name||'there'}**! Skills I found: ${(d.skills||[]).slice(0,5).map(s=>`\`${s}\``).join(' ')}${extraInfo}`);
   await sleep(500);
 
   // If LinkedIn URL was extracted from CV, auto-scan it
@@ -1279,6 +1404,7 @@ async function showCVScore(d){
 
 async function autoScanLinkedIn(url){
   phase = PHASES.AWAITING_LINKEDIN;
+  updateProgress('linkedin');
   await addBotBubble(`🔗 Found your LinkedIn: **${url.replace('https://','').replace('www.','')}** — scanning now…`);
   addTyping();
   try {
@@ -1313,15 +1439,16 @@ async function offerImprovements(){
     } else if(choice==='linkedin'){
       await showLinkedInOptimize();
       await sleep(400);
-      await askLocation();
+      await confirmDetectedRoles();
     } else {
-      await askLocation();
+      await confirmDetectedRoles();
     }
   });
 }
 
 async function askLinkedInUrl(){
   phase = PHASES.AWAITING_LINKEDIN;
+  updateProgress('linkedin');
   await addBotBubble(`🔗 **Now paste your LinkedIn profile URL** — I'll scan it and show you exactly what to improve.`);
   const wrap=document.createElement('div');
   wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
@@ -1390,13 +1517,13 @@ async function showCVImprovement(){
     await addBotBubble('✏️ You can **edit** any improved section above, then **download** your updated CV.');
     await sleep(300);
     addButtons([['Continue →','continue']], async ()=>{
-      await askLocation();
+      await confirmDetectedRoles();
     });
   } catch(e){
     removeTyping();
     await addBotBubble(`❌ Couldn't generate improvements right now. Let's continue with your job search!`);
     await sleep(400);
-    await askLocation();
+    await confirmDetectedRoles();
   }
 }
 
@@ -1573,8 +1700,66 @@ function buildCVImprovementCard(res){
   return wrap;
 }
 
+async function confirmDetectedRoles(){
+  const roles = prefs.detected_roles || [];
+  if(!roles.length){ await askRole(); return; }
+
+  phase = PHASES.AWAITING_ROLE;
+  updateProgress('roles');
+  await addBotBubble(`🎯 **I found these roles in your CV:**\n\nTap to deselect any, or add more below.`);
+
+  const wrap = document.createElement('div');
+  wrap.className='bubble';wrap.style.cssText='padding:12px;background:var(--surface2);border-radius:14px';
+
+  // Toggle buttons for detected roles
+  const toggleRow = document.createElement('div');
+  toggleRow.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px';
+  const selected = new Set(roles);
+  roles.forEach(r=>{
+    const btn=document.createElement('button');
+    btn.className='kb-btn';btn.textContent=r;
+    btn.style.cssText='border:1px solid var(--accent);color:var(--accent);background:rgba(16,217,160,.12)';
+    btn.onclick=()=>{
+      if(selected.has(r)){
+        selected.delete(r);
+        btn.style.cssText='border:1px solid var(--border);color:var(--text-muted);background:transparent';
+      } else {
+        selected.add(r);
+        btn.style.cssText='border:1px solid var(--accent);color:var(--accent);background:rgba(16,217,160,.12)';
+      }
+    };
+    toggleRow.appendChild(btn);
+  });
+  wrap.appendChild(toggleRow);
+
+  // Text field for additional roles
+  const addInput=document.createElement('input');
+  addInput.type='text';addInput.placeholder='Add more roles (comma separated)';
+  addInput.style.cssText='width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:13px;outline:none;margin-bottom:10px';
+  addInput.onfocus=()=>addInput.style.borderColor='var(--accent)';
+  addInput.onblur=()=>addInput.style.borderColor='var(--border)';
+  wrap.appendChild(addInput);
+
+  // Confirm button
+  const confirmBtn=document.createElement('button');
+  confirmBtn.className='kb-btn';
+  confirmBtn.textContent='✅ Confirm Roles';
+  confirmBtn.style.cssText='background:var(--accent);color:#0a0f1e;border:none;font-weight:600;padding:8px 18px;width:100%';
+  confirmBtn.onclick=async()=>{
+    const extra = addInput.value.split(',').map(r=>r.trim()).filter(Boolean);
+    const final = [...selected, ...extra].filter(Boolean);
+    prefs.target_roles = final.length ? final : ['any'];
+    addUserBubble(prefs.target_roles.join(', '));
+    await askLocation();
+  };
+  wrap.appendChild(confirmBtn);
+
+  addBotRow(wrap, false);
+}
+
 async function askRole(){
   phase = PHASES.AWAITING_ROLE;
+  updateProgress('roles');
   await addBotBubble(`🎯 **What roles are you targeting?**\n\nType the job title(s) you want. _Examples: Senior Product Manager, Backend Engineer_`);
   setInputEnabled(true);
   $input.focus();
@@ -1588,19 +1773,40 @@ async function handleRoleInput(text){
 
 async function askLocation(){
   phase = PHASES.AWAITING_LOCATION;
-  await addBotBubble(`📍 **Where do you want to work?**`);
-  addButtons([
-    ['🌍 Remote','remote'],['🏢 On-site','on-site'],
-    ['🔄 Hybrid','hybrid'],['✅ Any','any'],
-  ], async (val, label)=>{
-    prefs.locations = [val];
-    addUserBubble(label);
-    await searchJobsByHistory();
-  });
+  updateProgress('location');
+  const country = prefs.detected_country;
+  const loc = prefs.cv_location;
+  const locationText = loc || country;
+
+  if(locationText){
+    await addBotBubble(`📍 I detected you're based in **${locationText}**. Where do you want to work?`);
+    const buttons = [
+      [`📍 ${country || locationText}`, country || locationText],
+      ['🌍 Remote','remote'],
+      ['🔄 Hybrid','hybrid'],
+      ['✅ Any','any'],
+    ];
+    addButtons(buttons, async (val, label)=>{
+      prefs.locations = [val];
+      addUserBubble(label);
+      await askSalary();
+    });
+  } else {
+    await addBotBubble(`📍 **Where do you want to work?**`);
+    addButtons([
+      ['🌍 Remote','remote'],['🏢 On-site','on-site'],
+      ['🔄 Hybrid','hybrid'],['✅ Any','any'],
+    ], async (val, label)=>{
+      prefs.locations = [val];
+      addUserBubble(label);
+      await askSalary();
+    });
+  }
 }
 
 async function askSalary(){
   phase = PHASES.AWAITING_SALARY;
+  updateProgress('salary');
   await addBotBubble(`💰 **Minimum salary expectation?**\n\nType an amount, e.g. _80000 USD_ or _65000 GBP_. Type **skip** to leave blank.`);
   setInputEnabled(true);
   $input.focus();
@@ -1628,6 +1834,7 @@ async function handleSalaryInput(text){
 
 async function askIndustry(){
   phase = PHASES.AWAITING_INDUSTRY;
+  updateProgress('industry');
   await addBotBubble(`🏢 **Which industries are you targeting?**`);
   addButtons([
     ['💻 Tech','tech'],['💰 Finance','finance'],
@@ -1642,6 +1849,7 @@ async function askIndustry(){
 
 async function askSize(){
   phase = PHASES.AWAITING_SIZE;
+  updateProgress('size');
   await addBotBubble(`📊 **Preferred company size?**`);
   addButtons([
     ['🚀 Startup','startup'],['🏬 SMB','smb'],
@@ -1655,6 +1863,7 @@ async function askSize(){
 
 async function askEmp(){
   phase = PHASES.AWAITING_EMP;
+  updateProgress('employment');
   await addBotBubble(`💼 **Employment type?**`);
   addButtons([
     ['💼 Full-time','full-time'],['📋 Contract','contract'],
@@ -1668,6 +1877,7 @@ async function askEmp(){
 
 async function showConfirmation(){
   phase = PHASES.CONFIRM;
+  updateProgress('confirm');
   const s = prefs;
   await addBotBubble(
     `📋 **Your Job Search Profile**\n\n`+
@@ -1703,6 +1913,7 @@ async function confirmPrefs(){
       calendar_url: prefs.calendar_url||null,
     });
     removeTyping();
+    removeProgress();
     phase = PHASES.ACTIVE;
     await addBotBubble(`🎉 **You're all set!**\n\nEvery morning I'll send your top matches, tailor your CV per role, and track every application.\n\nLet me find your first matches now... 🔍`);
     showNavButtons();
@@ -1865,8 +2076,8 @@ async function applyOne(jobId, btn){
     addBotRow(card, true);
 
     const applied = applyRes.applied?.length > 0;
-    btn.textContent = applied ? '✅ Applied!' : 'Already applied';
-    btn.style.opacity = '0.6';
+    btn.textContent = applied ? 'Applied' : 'Already applied';
+    btn.classList.add('applied');
   } catch(e) {
     btn.disabled = false;
     if(skipBtn) skipBtn.disabled = false;
@@ -2370,7 +2581,7 @@ async function doJobSearch(){
     container.style.cssText='display:flex;flex-direction:column;gap:8px;margin-top:4px';
     results.forEach(job=>container.appendChild(buildJobCard(job)));
     const wrap=document.createElement('div');
-    wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:90%';
+    wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
     wrap.appendChild(container);
     addBotRow(wrap,false);
   } catch(e){
@@ -2983,33 +3194,16 @@ function buildCalendarCard(res){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// New Onboarding: searchJobsByHistory → showLinkedInOnboarding → confirmAndComplete
+// Job search (used from ACTIVE state search feature)
 // ─────────────────────────────────────────────────────────────────────────────
-async function searchJobsByHistory(){
-  phase = PHASES.SEARCHING_JOBS;
-  await addBotBubble(`🔍 **Searching for jobs based on your experience...**`);
+async function searchJobsByKeywords(keywords){
+  await addBotBubble(`🔍 **Searching for jobs...**`);
   addTyping();
 
-  // Extract job titles from CV experience
-  let keywords = [];
-  if(cvData){
-    const exp = cvData.experience || cvData.parsed_data?.experience || [];
-    if(exp.length){
-      keywords = [...new Set(exp.map(e=>e.title||e.role||'').filter(Boolean))].slice(0,3);
-    }
-    if(!keywords.length){
-      // Fallback to primary_domain + skills
-      const domain = cvData.primary_domain || '';
-      const skills = (cvData.skills || []).slice(0,3);
-      if(domain) keywords.push(domain);
-      keywords = keywords.concat(skills);
-    }
+  if(!keywords || !keywords.length){
+    keywords = (prefs.target_roles||[]).slice(0,3);
+    if(!keywords.length) keywords = ['software','engineer'];
   }
-
-  if(!keywords.length) keywords = ['software','engineer']; // absolute fallback
-
-  // Store extracted roles as target_roles
-  prefs.target_roles = keywords.slice(0,3);
 
   try {
     const location = (prefs.locations||[])[0] || null;
@@ -3023,10 +3217,10 @@ async function searchJobsByHistory(){
 
     const results = res.results || [];
     if(!results.length){
-      await addBotBubble(`📭 I'm still building the job database for your area. I'll have matches ready soon!\n\nKeywords used: ${keywords.map(k=>`\`${k}\``).join(' ')}`);
+      await addBotBubble(`📭 No jobs found for "${keywords.join(', ')}". Try different keywords or broaden your search.`);
     } else {
       pendingMatches = results;
-      await addBotBubble(`🎯 Found **${results.length}** jobs matching your experience (${keywords.join(', ')}):`);
+      await addBotBubble(`🎯 Found **${results.length}** jobs for "${keywords.join(', ')}":`);
       const container = document.createElement('div');
       container.style.cssText='display:flex;flex-direction:column;gap:8px;margin-top:4px';
       results.forEach(job=>container.appendChild(buildJobCard(job)));
@@ -3042,90 +3236,13 @@ async function searchJobsByHistory(){
       container.appendChild(bar);
 
       const wrap=document.createElement('div');
-      wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:90%';
+      wrap.className='bubble';wrap.style.cssText='padding:0;background:transparent;max-width:88%';
       wrap.appendChild(container);
       addBotRow(wrap,false);
     }
   } catch(e){
     removeTyping();
-    await addBotBubble(`📭 Couldn't search jobs right now, but don't worry — I'll find matches for you once set up.`);
-  }
-
-  await sleep(800);
-  await confirmAndComplete();
-}
-
-async function showLinkedInOnboarding(){
-  phase = PHASES.LINKEDIN_ONBOARDING;
-
-  const linkedinUrl = prefs.linkedin_url;
-
-  async function handleLinkedInResult(url){
-    addTyping();
-    try {
-      const res = await api('/api/linkedin/optimize','POST',{
-        profile_text: null,
-        linkedin_url: url || null,
-      });
-      removeTyping();
-      if(res._scrape_status==='scraped'){
-        await addBotBubble('🔍 **Scan complete!** Here\'s your section-by-section analysis:');
-      } else {
-        await addBotBubble('💼 **LinkedIn Tips** based on your CV:');
-      }
-      const card = buildLinkedInCard(res);
-      addBotRow(card, false);
-
-      await sleep(400);
-      addButtons([
-        ["✅ I've updated my profile",'done'],
-        ["⏭️ I'll do it later",'later'],
-      ], async (val)=>{
-        if(val==='done') addUserBubble("I've updated my LinkedIn!");
-        else addUserBubble("I'll do it later");
-        await confirmAndComplete();
-      });
-    } catch(e){
-      removeTyping();
-      await addBotBubble(`💼 LinkedIn optimization requires a CV first. No worries — you can access it anytime from the menu!`);
-      await sleep(400);
-      await confirmAndComplete();
-    }
-  }
-
-  if(linkedinUrl){
-    await addBotBubble(`💼 **Scanning your LinkedIn profile…**\n\`${linkedinUrl}\``);
-    await handleLinkedInResult(linkedinUrl);
-  } else {
-    await addBotBubble(`💼 **Let me scan your LinkedIn profile** — enter your URL and I'll analyze it.`);
-    showLinkedInUrlInput(async (url)=>{
-      await handleLinkedInResult(url);
-    });
-  }
-}
-
-async function confirmAndComplete(){
-  addTyping();
-  try {
-    await api('/api/preferences','POST',{
-      target_roles: prefs.target_roles || [],
-      locations: prefs.locations || ['any'],
-      min_salary: null,
-      salary_currency: 'USD',
-      industries: ['any'],
-      company_sizes: ['any'],
-      employment_types: ['any'],
-      linkedin_url: prefs.linkedin_url || null,
-      email_address: prefs.email_address || null,
-      calendar_url: prefs.calendar_url || null,
-    });
-    removeTyping();
-    phase = PHASES.ACTIVE;
-    await addBotBubble(`🎉 **You're all set!**\n\nYour profile is ready. Every day I'll:\n• Find new matches based on your experience\n• Tailor your CV for each role\n• Track every application\n\nUse the buttons above to explore!`);
-    showNavButtons();
-  } catch(e){
-    removeTyping();
-    await addBotBubble(`❌ Something went wrong saving your profile. Try refreshing.`);
+    await addBotBubble(`📭 Couldn't search jobs right now. Try again later.`);
   }
 }
 
