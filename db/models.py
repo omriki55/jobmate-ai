@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, Float, JSON, DateTime,
+    Column, Integer, BigInteger, String, Float, JSON, DateTime,
     Boolean, ForeignKey, Text, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship, DeclarativeBase
@@ -14,7 +14,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, nullable=False, index=True)
+    telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
     username = Column(String, nullable=True)
     first_name = Column(String, nullable=True)
     state = Column(String, default="AWAITING_CV")   # AWAITING_CV | ACTIVE | PAUSED
