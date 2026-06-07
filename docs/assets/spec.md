@@ -95,7 +95,8 @@ flowchart TD
     M2 -->|0| MD["SF Search Account by email DOMAIN"]:::sf
     M2 -->|>1 account| HMpick["Slack Block Kit:<br/>rep picks account/opp (Wait node)"]:::human
 
-    MD -->|account found| OPP
+    MD -->|account found| MKC["SF: create Contact under<br/>identified account (auto)"]:::sf
+    MKC --> OPP
     MD -->|none| HMnew["Slack: net-new prospect?<br/>rep confirms create Lead/Account (Wait)"]:::human
 
     OPP --> O2{"How many open opps?"}:::dec
@@ -249,7 +250,10 @@ downstream logic is written once.
      Opportunities** on that account.
    - **0 contacts:** **[SF node] Search Account by email domain**
      (`Website`/custom `Domain__c`).
-     - Account found → proceed to opps.
+     - **Account found (new face at a known company)** → **[SF node] create the
+       Contact under that identified account automatically** (the account is
+       certain, so no human gate is needed — only net-new *accounts* require
+       confirmation) → proceed to opps.
      - None found → **net-new prospect** → **[Slack Block Kit + Wait node]**:
        ask the rep (the internal organizer = likely owner) to confirm
        create-Lead / create-Account before any write.
