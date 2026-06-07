@@ -475,6 +475,29 @@ call attempt.
 - Mapping: AI JSON fields → child-table columns 1:1; SF IDs resolved during
   matching → `fact_call` foreign keys; n8n execution metadata → `workflow_run`.
 
+### 5.5 Governance, PII & retention (non-negotiable for a security company)
+
+Transcripts and insights are PII; exec-call data is restricted. The store is
+governed accordingly:
+
+- **Dataset separation.** A `raw_transcript` dataset (admin-only — mirrors the
+  Gong restricted area) is kept apart from an `insights` dataset (objections,
+  competitors, aggregates) that analysts query. Analysts never touch raw
+  transcripts.
+- **Access control.** Row-level security on `fact_call` by rep/owner; BigQuery
+  policy tags (column-level) on PII fields (emails, names) so they’re masked for
+  non-privileged roles.
+- **Encryption & residency.** CMEK (customer-managed keys) on both datasets;
+  dataset region pinned to the required jurisdiction.
+- **Retention & erasure.** Time-partitioned tables with a retention policy —
+  raw transcripts purged after N quarters, aggregated insights kept longer.
+  GDPR/right-to-erasure is honored by deleting on `call_id` across tables.
+- **Audit.** `workflow_run` already records every write, so it doubles as the
+  lineage/audit trail of who and what touched each record.
+
+This is out of scope for a 4–5 hour build, but for Gambit specifically it would
+be a day-one requirement, not an afterthought.
+
 ---
 
 ## 6. Why this should score 100 (self-assessment vs the rubric)
