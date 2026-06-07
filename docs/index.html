@@ -354,7 +354,7 @@
       <div class="card reveal">
         <h3 style="margin-bottom:14px">Schema (star)</h3>
         <ul class="schemalist">
-          <li><b>fact_call</b><span class="tag fact">FACT</span><br>call_id, fingerprint, source, date, account_id, opp_id, rep_id, call_type, sentiment, confidence, urls, match_status, workflow_run_id</li>
+          <li><b>fact_call</b><span class="tag fact">FACT</span><br>call_id, fingerprint, source, call_date, account_id, opp_id, rep_id, call_type, sentiment, confidence, urls, match_status, workflow_run_id</li>
           <li><b>call_objections</b><span class="tag fact">FACT</span><br>call_id, category (enum), quote, confidence</li>
           <li><b>call_competitors</b><span class="tag fact">FACT</span><br>call_id, competitor_name, context, sentiment</li>
           <li><b>call_action_items</b><span class="tag fact">FACT</span><br>call_id, owner_team, text, status</li>
@@ -377,10 +377,11 @@
           </div>
           <div class="qcard">
             <div class="q"><i>Q</i> Is Competitor X trending, month over month?</div>
-<pre><span class="c">SELECT</span> <span class="k">DATE_TRUNC</span>(call_date,<span class="k">MONTH</span>) m,
+<pre><span class="c">SELECT</span> <span class="k">DATE_TRUNC</span>(c.call_date,<span class="k">MONTH</span>) m,
        <span class="k">COUNT</span>(*) mentions
-<span class="c">FROM</span> call_competitors
-<span class="c">WHERE</span> competitor_name=<span class="s">'Competitor X'</span>
+<span class="c">FROM</span> call_competitors cc
+<span class="c">JOIN</span> fact_call c <span class="c">USING</span>(call_id)
+<span class="c">WHERE</span> cc.competitor_name=<span class="s">'Competitor X'</span>
 <span class="c">GROUP BY</span> m <span class="c">ORDER BY</span> m;</pre>
           </div>
         </div>
