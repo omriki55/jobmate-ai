@@ -1,0 +1,399 @@
+{
+  "name": "Gambit – Post-Call Workflow (Customer/Prospect)",
+  "meta": {
+    "note": "Importable n8n skeleton accompanying the spec. Credentials are referenced by name, not embedded. The two triggers (Gong + Grain) both call the same downstream pipeline; in production NORMALIZE..ROUTE is an Execute-Workflow sub-flow reused by both."
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gong-call-complete",
+        "options": {}
+      },
+      "id": "trg_gong",
+      "name": "Gong Webhook (call complete)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1040, -120]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "grain-recording-added",
+        "options": {}
+      },
+      "id": "trg_grain",
+      "name": "Grain Webhook (recording added)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1040, 120]
+    },
+    {
+      "parameters": {
+        "jsCode": "// NORMALIZE: unify Gong & Grain payloads into one CallObject\nconst b = $json.body || $json;\nconst src = b.callId ? 'gong' : 'grain';\nconst parties = (b.parties || b.participants || []).map(p => ({\n  email: (p.emailAddress || p.email || '').toLowerCase(),\n  name: p.name || '',\n  affiliation: p.affiliation || ''\n}));\nconst OWN = (($env.OWN_DOMAINS) || 'gambit.com').split(',').map(d=>d.trim());\nconst hasExternal = parties.some(p => p.email && !OWN.includes(p.email.split('@')[1]));\nreturn [{ json: {\n  source: src,\n  source_id: b.callId || b.recording_id,\n  title: b.title || '',\n  start_time: b.started || b.start_datetime,\n  duration: b.duration || null,\n  participants: parties,\n  organizer_email: (b.organizer || parties[0]?.email || ''),\n  meeting_id: b.meetingId || b.meeting_id || '',\n  recording_url: b.url || b.recordingUrl || '',\n  has_external: hasExternal\n}}];"
+      },
+      "id": "fn_normalize",
+      "name": "NORMALIZE → CallObject",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-800, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst c = $json;\nconst emails = c.participants.map(p=>p.email).filter(Boolean).sort().join('|');\nconst bucket = Math.floor(new Date(c.start_time).getTime() / (5*60*1000));\nconst fingerprint = crypto.createHash('sha1').update(emails + '|' + bucket).digest('hex');\nreturn [{ json: { ...c, fingerprint } }];"
+      },
+      "id": "fn_fp",
+      "name": "Fingerprint",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-580, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "sqlQuery": "MERGE `gambit.calls.processed_calls` T USING (SELECT '{{$json.fingerprint}}' AS fingerprint, '{{$json.source}}' AS source, '{{$json.source_id}}' AS source_id, CURRENT_TIMESTAMP() AS processed_at) S ON T.fingerprint = S.fingerprint WHEN NOT MATCHED THEN INSERT (fingerprint, source, source_id, processed_at) VALUES (S.fingerprint, S.source, S.source_id, S.processed_at)",
+        "options": {}
+      },
+      "id": "bq_dedup",
+      "name": "BigQuery: atomic claim (MERGE)",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [-360, 0],
+      "notes": "Atomic dedup: MERGE inserts the fingerprint only if absent. numDmlAffectedRows=1 means THIS run claimed the call; 0 means another run (e.g. the other source's webhook) already owns it -> stop. Race-safe vs read-then-write. Pair with n8n queue-mode concurrency keyed on fingerprint.",
+      "credentials": { "googleBigQueryOAuth2Api": { "name": "Gambit BigQuery" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            { "leftValue": "={{ $json.numDmlAffectedRows }}", "rightValue": 1, "operator": { "type": "number", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if_new",
+      "name": "IF claimed (rows_affected=1)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-140, 0]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "options": {"caseSensitive": true}, "conditions": [ { "leftValue": "={{$json.has_external}}", "rightValue": true, "operator": {"type":"boolean","operation":"true"} } ], "combinator":"and" }, "outputKey": "external" },
+            { "conditions": { "options": {"caseSensitive": true}, "conditions": [ { "leftValue": "={{$json.has_external}}", "rightValue": false, "operator": {"type":"boolean","operation":"false"} } ], "combinator":"and" }, "outputKey": "internal" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sw_classify",
+      "name": "Switch: internal vs external",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [120, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            { "leftValue": "={{ $json.participants.map(p=>p.email).filter(e => ($env.EXEC_LIST||'').split(',').includes(e)).length }}", "rightValue": 0, "operator": { "type": "number", "operation": "gt" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if_exec",
+      "name": "IF exec (fail-closed)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [340, 200]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.gong.io/v2/calls/{{$json.source_id}}/workspace",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"workspaceId\": \"{{$env.GONG_RESTRICTED_WORKSPACE}}\" }",
+        "options": {}
+      },
+      "id": "http_restrict",
+      "name": "Gong: move to RESTRICTED",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [560, 320],
+      "credentials": { "httpHeaderAuth": { "name": "Gong API" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.gong.io/v2/calls/transcript",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"filter\": { \"callIds\": [\"{{$json.source_id}}\"] } }",
+        "options": {}
+      },
+      "id": "http_gong_t",
+      "name": "Gong: get transcript",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [340, -120],
+      "credentials": { "httpHeaderAuth": { "name": "Gong API" } }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.grain.com/_/public-api/recordings/{{$json.source_id}}?include_transcript=true",
+        "options": {}
+      },
+      "id": "http_grain_t",
+      "name": "Grain: get transcript",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [340, 20],
+      "credentials": { "httpHeaderAuth": { "name": "Grain API" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [ { "name": "anthropic-version", "value": "2023-06-01" }, { "name": "content-type", "value": "application/json" } ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-latest\",\n  \"max_tokens\": 2000,\n  \"system\": \"You extract structured sales-call insight. Return ONLY valid JSON matching the schema. Use the objection category enum: pricing|competitor|timing|authority|integration|other.\",\n  \"messages\": [{ \"role\": \"user\", \"content\": \"TRANSCRIPT:\\n{{ $json.transcript_text }}\\n\\nReturn JSON: summary, next_steps[], sentiment, objections[{category,quote,confidence}], competitors[{name,context,sentiment}], action_items[{owner_team,text}], meddpicc{}, match_hints{account_name,domains[],attendee_emails[]}, overall_confidence\" }]\n}",
+        "options": {}
+      },
+      "id": "http_claude",
+      "name": "Claude: extract insight (JSON)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [560, -50],
+      "credentials": { "httpHeaderAuth": { "name": "Anthropic API" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            { "leftValue": "={{ $json.insight && $json.insight.overall_confidence }}", "rightValue": 0.6, "operator": { "type": "number", "operation": "gte" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if_valid",
+      "name": "IF valid + confident",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [780, -50]
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "getAll",
+        "returnAll": true,
+        "filters": { "email": "={{ $json.participants.filter(p=>p.affiliation!=='Internal').map(p=>p.email).join(',') }}" }
+      },
+      "id": "sf_contact",
+      "name": "SF: search Contact by email",
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1,
+      "position": [1000, -120],
+      "credentials": { "salesforceOAuth2Api": { "name": "Gambit Salesforce" } }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "options": {"caseSensitive": true}, "conditions": [ { "leftValue": "={{ $items().length }}", "rightValue": 1, "operator": {"type":"number","operation":"equals"} } ], "combinator":"and" }, "outputKey": "one" },
+            { "conditions": { "options": {"caseSensitive": true}, "conditions": [ { "leftValue": "={{ $items().length }}", "rightValue": 0, "operator": {"type":"number","operation":"equals"} } ], "combinator":"and" }, "outputKey": "none" },
+            { "conditions": { "options": {"caseSensitive": true}, "conditions": [ { "leftValue": "={{ $items().length }}", "rightValue": 1, "operator": {"type":"number","operation":"gt"} } ], "combinator":"and" }, "outputKey": "many" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sw_match",
+      "name": "Switch: match count",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1220, -120]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": { "__rl": true, "value": "C_REP_DM", "mode": "id" },
+        "text": "=⚠️ Ambiguous match for call \"{{ $json.title }}\". Pick the right account/opportunity:",
+        "otherOptions": {}
+      },
+      "id": "slack_pick",
+      "name": "Slack: human-in-the-loop pick",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1440, 60],
+      "credentials": { "slackApi": { "name": "Gambit Slack" } }
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "options": { "limitWaitTime": { "values": { "resumeAmount": 24, "resumeUnit": "hours" } } }
+      },
+      "id": "wait_rep",
+      "name": "Wait: rep response (24h limit)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1500, 200],
+      "notes": "Resumes when the rep clicks a Block Kit button (Slack interactivity -> this webhook). If 24h pass with no answer, it resumes anyway and the next IF routes to escalation so the call is never lost."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            { "leftValue": "={{ $json.selected_account_id }}", "rightValue": "", "operator": { "type": "string", "operation": "notEmpty" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if_answered",
+      "name": "IF rep answered",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1500, 360]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": { "__rl": true, "value": "C_MANAGER", "mode": "id" },
+        "text": "=⏰ No rep response in 24h for \"{{ $json.title }}\". Persisting as *Needs Review* and escalating.",
+        "otherOptions": {}
+      },
+      "id": "slack_escalate",
+      "name": "Slack: escalate to manager",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1720, 460],
+      "credentials": { "slackApi": { "name": "Gambit Slack" } }
+    },
+    {
+      "parameters": {
+        "resource": "customObject",
+        "operation": "create",
+        "customObject": "Call_Summary__c",
+        "fieldsToSend": "defined",
+        "fields": { "field": [
+          { "name": "Summary__c", "value": "={{ $json.insight.summary }}" },
+          { "name": "Status__c", "value": "Needs Review" },
+          { "name": "Match_Status__c", "value": "unresolved" },
+          { "name": "Source__c", "value": "={{ $json.source }}" }
+        ] }
+      },
+      "id": "sf_needsreview",
+      "name": "SF: Needs Review (no data lost)",
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1,
+      "position": [1720, 560],
+      "credentials": { "salesforceOAuth2Api": { "name": "Gambit Salesforce" } }
+    },
+    {
+      "parameters": {
+        "resource": "customObject",
+        "operation": "create",
+        "customObject": "Call_Summary__c",
+        "fieldsToSend": "defined",
+        "fields": { "field": [
+          { "name": "Summary__c", "value": "={{ $json.insight.summary }}" },
+          { "name": "Sentiment__c", "value": "={{ $json.insight.sentiment }}" },
+          { "name": "Source__c", "value": "={{ $json.source }}" },
+          { "name": "Recording_URL__c", "value": "={{ $json.recording_url }}" },
+          { "name": "Account__c", "value": "={{ $json.account_id }}" },
+          { "name": "Opportunity__c", "value": "={{ $json.opportunity_id }}" },
+          { "name": "AI_Confidence__c", "value": "={{ $json.insight.overall_confidence }}" },
+          { "name": "Workflow_Run_Id__c", "value": "={{ $json.run_id }}" }
+        ] }
+      },
+      "id": "sf_write",
+      "name": "SF: create Call_Summary__c",
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1,
+      "position": [1660, -120],
+      "credentials": { "salesforceOAuth2Api": { "name": "Gambit Salesforce" } }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": { "__rl": true, "value": "C_AE_DM", "mode": "id" },
+        "text": "=✅ *{{ $json.title }}*\n{{ $json.insight.summary }}\n\n*Next steps:* {{ $json.insight.next_steps.join('; ') }}\nSF: {{ $json.sf_link }}",
+        "otherOptions": {}
+      },
+      "id": "slack_ae",
+      "name": "Slack: notify AE",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1880, -200],
+      "credentials": { "slackApi": { "name": "Gambit Slack" } }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "projectId": { "__rl": true, "value": "gambit", "mode": "id" },
+        "datasetId": { "__rl": true, "value": "calls", "mode": "id" },
+        "tableId": { "__rl": true, "value": "fact_call", "mode": "id" },
+        "options": {}
+      },
+      "id": "bq_insert",
+      "name": "BigQuery: insert fact_call + children",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1880, 0],
+      "credentials": { "googleBigQueryOAuth2Api": { "name": "Gambit BigQuery" } }
+    },
+    {
+      "parameters": {},
+      "id": "err_trg",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [-1040, 420]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": { "__rl": true, "value": "C_AUTOMATION_ALERTS", "mode": "id" },
+        "text": "=🚨 Post-call workflow failed at *{{$json.execution?.lastNodeExecuted}}* — {{$json.execution?.error?.message}}",
+        "otherOptions": {}
+      },
+      "id": "slack_err",
+      "name": "Slack: #automation-alerts",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [-800, 420],
+      "credentials": { "slackApi": { "name": "Gambit Slack" } }
+    }
+  ],
+  "connections": {
+    "Gong Webhook (call complete)": { "main": [[{ "node": "NORMALIZE → CallObject", "type": "main", "index": 0 }]] },
+    "Grain Webhook (recording added)": { "main": [[{ "node": "NORMALIZE → CallObject", "type": "main", "index": 0 }]] },
+    "NORMALIZE → CallObject": { "main": [[{ "node": "Fingerprint", "type": "main", "index": 0 }]] },
+    "Fingerprint": { "main": [[{ "node": "BigQuery: dedup lookup", "type": "main", "index": 0 }]] },
+    "BigQuery: atomic claim (MERGE)": { "main": [[{ "node": "IF claimed (rows_affected=1)", "type": "main", "index": 0 }]] },
+    "IF claimed (rows_affected=1)": { "main": [[{ "node": "Switch: internal vs external", "type": "main", "index": 0 }], []] },
+    "Switch: internal vs external": { "main": [[{ "node": "Gong: get transcript", "type": "main", "index": 0 }, { "node": "Grain: get transcript", "type": "main", "index": 0 }], [{ "node": "IF exec (fail-closed)", "type": "main", "index": 0 }]] },
+    "IF exec (fail-closed)": { "main": [[{ "node": "Gong: move to RESTRICTED", "type": "main", "index": 0 }], []] },
+    "Gong: get transcript": { "main": [[{ "node": "Claude: extract insight (JSON)", "type": "main", "index": 0 }]] },
+    "Grain: get transcript": { "main": [[{ "node": "Claude: extract insight (JSON)", "type": "main", "index": 0 }]] },
+    "Claude: extract insight (JSON)": { "main": [[{ "node": "IF valid + confident", "type": "main", "index": 0 }]] },
+    "IF valid + confident": { "main": [[{ "node": "SF: search Contact by email", "type": "main", "index": 0 }], []] },
+    "SF: search Contact by email": { "main": [[{ "node": "Switch: match count", "type": "main", "index": 0 }]] },
+    "Switch: match count": { "main": [[{ "node": "SF: create Call_Summary__c", "type": "main", "index": 0 }], [{ "node": "Slack: human-in-the-loop pick", "type": "main", "index": 0 }], [{ "node": "Slack: human-in-the-loop pick", "type": "main", "index": 0 }]] },
+    "Slack: human-in-the-loop pick": { "main": [[{ "node": "Wait: rep response (24h limit)", "type": "main", "index": 0 }]] },
+    "Wait: rep response (24h limit)": { "main": [[{ "node": "IF rep answered", "type": "main", "index": 0 }]] },
+    "IF rep answered": { "main": [[{ "node": "SF: create Call_Summary__c", "type": "main", "index": 0 }], [{ "node": "Slack: escalate to manager", "type": "main", "index": 0 }, { "node": "SF: Needs Review (no data lost)", "type": "main", "index": 0 }]] },
+    "SF: Needs Review (no data lost)": { "main": [[{ "node": "BigQuery: insert fact_call + children", "type": "main", "index": 0 }]] },
+    "SF: create Call_Summary__c": { "main": [[{ "node": "Slack: notify AE", "type": "main", "index": 0 }, { "node": "BigQuery: insert fact_call + children", "type": "main", "index": 0 }]] },
+    "Error Trigger": { "main": [[{ "node": "Slack: #automation-alerts", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "errorWorkflow": "this" },
+  "pinData": {}
+}
