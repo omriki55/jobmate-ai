@@ -201,7 +201,7 @@
       <a class="btn ghost" href="assets/n8n_workflow.json" download>n8n workflow .json</a>
     </div>
     <div class="stats">
-      <div class="stat reveal"><div class="big g-text">15</div><div class="lbl">orchestration nodes, contracted end-to-end</div></div>
+      <div class="stat reveal"><div class="big g-text">16</div><div class="lbl">orchestration nodes, contracted end-to-end</div></div>
       <div class="stat reveal"><div class="big g-text">2→1</div><div class="lbl">sources (Gong + Grain) reconciled into one pipeline</div></div>
       <div class="stat reveal"><div class="big g-text">6</div><div class="lbl">production-grade edges hardened, not hand-waved</div></div>
       <div class="stat reveal"><div class="big g-text">8</div><div class="lbl">BigQuery tables answering retro questions in SQL</div></div>
@@ -220,7 +220,7 @@
     <div class="grid g5" style="margin-top:36px">
       <div class="card reveal"><div class="num">01</div><h3>Two sources, one call</h3><p>Gong recordings, Grain-only transcripts, sometimes both — needs a normalize + race-safe dedup layer.</p></div>
       <div class="card reveal"><div class="num">02</div><h3>Restricted routing</h3><p>Internal exec calls must land in an admin-only area. Classification fails <b>closed</b> — when unsure, restrict.</p></div>
-      <div class="card reveal"><div class="num">03</div><h3>Matching, not guessing</h3><p>From a list of attendee emails to the right account / contact / opportunity — with a human gate for ambiguity.</p></div>
+      <div class="card reveal"><div class="num">03</div><h3>Matching, not guessing</h3><p>From a list of attendee emails to the right account / contact / opportunity — a new face at a known account is auto-created; only net-new accounts need a human gate.</p></div>
       <div class="card reveal"><div class="num">04</div><h3>Proving AI quality</h3><p>A confidence gate that doesn’t trust the model’s self-rating, plus an eval loop that measures drift.</p></div>
       <div class="card reveal"><div class="num">05</div><h3>Retro-ready storage</h3><p>Every run stored structurally so the business can ask “every Q2 pricing-objection call” in SQL.</p></div>
     </div>
@@ -264,11 +264,12 @@
           <tr><td class="n">8</td><td><span class="nm">HTTP · Transcript</span></td><td>—</td><td>source_id</td><td>transcript text</td><td class="fail">not ready → Wait+retry → partial</td></tr>
           <tr><td class="n">9</td><td><span class="nm">HTTP · Claude (map/reduce)</span></td><td>—</td><td>transcript</td><td>insight JSON</td><td class="fail">invalid → repair → manual</td></tr>
           <tr><td class="n">10</td><td><span class="nm">IF · Validate</span></td><td>—</td><td>insight JSON</td><td>pass/fail</td><td class="fail">fail → Slack manual</td></tr>
-          <tr><td class="n">11</td><td><span class="nm">SF · Search Contact</span></td><td>—</td><td>external emails</td><td>contact/account</td><td class="fail">0/&gt;1 → domain / HITL</td></tr>
-          <tr><td class="n">12</td><td><span class="nm">Switch · Match + Wait</span></td><td>—</td><td>results</td><td>1/0/many</td><td class="fail">many → Wait+pick; timeout → escalate</td></tr>
-          <tr><td class="n">13</td><td><span class="nm">SF · Create Call_Summary__c</span></td><td>—</td><td>insight + IDs</td><td>record id</td><td class="fail">error → error wf</td></tr>
-          <tr><td class="n">14</td><td><span class="nm">Slack/Docs · Route</span></td><td>—</td><td>insight + links</td><td>messages</td><td>—</td></tr>
-          <tr><td class="n">15</td><td><span class="nm">BigQuery · Insert</span></td><td>—</td><td>fact + children</td><td>row ids</td><td class="fail">always writes workflow_run</td></tr>
+          <tr><td class="n">11</td><td><span class="nm">SF · Search Contact</span></td><td>—</td><td>external emails</td><td>contact/account</td><td class="fail">0 → domain lookup; &gt;1 → HITL</td></tr>
+          <tr><td class="n">12</td><td><span class="nm">SF · Account by domain → Contact</span></td><td>—</td><td>email domain</td><td>account + new contact</td><td class="fail">known acct → auto-create contact; none → confirm</td></tr>
+          <tr><td class="n">13</td><td><span class="nm">Switch · Match + Wait</span></td><td>—</td><td>results</td><td>1/0/many</td><td class="fail">many → Wait+pick; timeout → escalate</td></tr>
+          <tr><td class="n">14</td><td><span class="nm">SF · Create Call_Summary__c</span></td><td>—</td><td>insight + IDs</td><td>record id</td><td class="fail">error → error wf</td></tr>
+          <tr><td class="n">15</td><td><span class="nm">Slack/Docs · Route</span></td><td>—</td><td>insight + links</td><td>messages</td><td>—</td></tr>
+          <tr><td class="n">16</td><td><span class="nm">BigQuery · Insert</span></td><td>—</td><td>fact + children</td><td>row ids</td><td class="fail">always writes workflow_run</td></tr>
         </tbody>
       </table>
     </div>

@@ -370,13 +370,63 @@
       "typeVersion": 2.2,
       "position": [-800, 420],
       "credentials": { "slackApi": { "name": "Gambit Slack" } }
+    },
+    {
+      "parameters": {
+        "resource": "account",
+        "operation": "getAll",
+        "returnAll": true,
+        "filters": { "website": "={{ $json.insight.match_hints.domains[0] }}" }
+      },
+      "id": "sf_account_domain",
+      "name": "SF: search Account by domain",
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1,
+      "position": [1400, 200],
+      "credentials": { "salesforceOAuth2Api": { "name": "Gambit Salesforce" } },
+      "notes": "0 contacts matched. Look up the account by email domain. Found -> known company, create the new contact under it automatically. Not found -> net-new prospect -> human confirm."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            { "leftValue": "={{ $items().length }}", "rightValue": 0, "operator": { "type": "number", "operation": "gt" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if_account_found",
+      "name": "IF account found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "create",
+        "fieldsToSend": "defined",
+        "fields": { "field": [
+          { "name": "Email", "value": "={{ $json.insight.match_hints.attendee_emails[0] }}" },
+          { "name": "AccountId", "value": "={{ $json.account_id }}" },
+          { "name": "LeadSource", "value": "Call (auto)" }
+        ] }
+      },
+      "id": "sf_create_contact",
+      "name": "SF: create Contact under account",
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1,
+      "position": [1720, 200],
+      "credentials": { "salesforceOAuth2Api": { "name": "Gambit Salesforce" } },
+      "notes": "New face at a known company. The account is certain, so no human gate — create the Contact automatically and continue to the write. Only net-new ACCOUNTS require rep confirmation."
     }
   ],
   "connections": {
     "Gong Webhook (call complete)": { "main": [[{ "node": "NORMALIZE → CallObject", "type": "main", "index": 0 }]] },
     "Grain Webhook (recording added)": { "main": [[{ "node": "NORMALIZE → CallObject", "type": "main", "index": 0 }]] },
     "NORMALIZE → CallObject": { "main": [[{ "node": "Fingerprint", "type": "main", "index": 0 }]] },
-    "Fingerprint": { "main": [[{ "node": "BigQuery: dedup lookup", "type": "main", "index": 0 }]] },
+    "Fingerprint": { "main": [[{ "node": "BigQuery: atomic claim (MERGE)", "type": "main", "index": 0 }]] },
     "BigQuery: atomic claim (MERGE)": { "main": [[{ "node": "IF claimed (rows_affected=1)", "type": "main", "index": 0 }]] },
     "IF claimed (rows_affected=1)": { "main": [[{ "node": "Switch: internal vs external", "type": "main", "index": 0 }], []] },
     "Switch: internal vs external": { "main": [[{ "node": "Gong: get transcript", "type": "main", "index": 0 }, { "node": "Grain: get transcript", "type": "main", "index": 0 }], [{ "node": "IF exec (fail-closed)", "type": "main", "index": 0 }]] },
@@ -386,7 +436,10 @@
     "Claude: extract insight (JSON)": { "main": [[{ "node": "IF valid + confident", "type": "main", "index": 0 }]] },
     "IF valid + confident": { "main": [[{ "node": "SF: search Contact by email", "type": "main", "index": 0 }], []] },
     "SF: search Contact by email": { "main": [[{ "node": "Switch: match count", "type": "main", "index": 0 }]] },
-    "Switch: match count": { "main": [[{ "node": "SF: create Call_Summary__c", "type": "main", "index": 0 }], [{ "node": "Slack: human-in-the-loop pick", "type": "main", "index": 0 }], [{ "node": "Slack: human-in-the-loop pick", "type": "main", "index": 0 }]] },
+    "Switch: match count": { "main": [[{ "node": "SF: create Call_Summary__c", "type": "main", "index": 0 }], [{ "node": "SF: search Account by domain", "type": "main", "index": 0 }], [{ "node": "Slack: human-in-the-loop pick", "type": "main", "index": 0 }]] },
+    "SF: search Account by domain": { "main": [[{ "node": "IF account found", "type": "main", "index": 0 }]] },
+    "IF account found": { "main": [[{ "node": "SF: create Contact under account", "type": "main", "index": 0 }], [{ "node": "Slack: human-in-the-loop pick", "type": "main", "index": 0 }]] },
+    "SF: create Contact under account": { "main": [[{ "node": "SF: create Call_Summary__c", "type": "main", "index": 0 }]] },
     "Slack: human-in-the-loop pick": { "main": [[{ "node": "Wait: rep response (24h limit)", "type": "main", "index": 0 }]] },
     "Wait: rep response (24h limit)": { "main": [[{ "node": "IF rep answered", "type": "main", "index": 0 }]] },
     "IF rep answered": { "main": [[{ "node": "SF: create Call_Summary__c", "type": "main", "index": 0 }], [{ "node": "Slack: escalate to manager", "type": "main", "index": 0 }, { "node": "SF: Needs Review (no data lost)", "type": "main", "index": 0 }]] },
