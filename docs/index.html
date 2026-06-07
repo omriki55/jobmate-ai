@@ -388,6 +388,10 @@
         <div class="note">Write path → the BigQuery Insert node writes fact_call + children; the MERGE node maintains processed_calls; every run (success or via the Error Trigger) writes workflow_run; the eval sampler writes ai_quality.</div>
       </div>
     </div>
+    <div class="card reveal" style="margin-top:18px;grid-column:1/-1">
+      <h3 style="margin-bottom:8px">🔒 Governance, PII &amp; retention</h3>
+      <p style="color:var(--muted);font-size:14.5px;margin:0">Transcripts are PII and exec calls are restricted, so the store is governed like one: a <b style="color:var(--txt2)">raw_transcript</b> dataset (admin-only, mirroring the Gong restricted area) kept apart from an <b style="color:var(--txt2)">insights</b> dataset analysts query; row-level security by owner + column policy tags masking emails/names; CMEK encryption with region pinned for residency; time-partitioned <b style="color:var(--txt2)">retention</b> (raw transcripts purged after N quarters) with GDPR erasure by <span class="mono">call_id</span>; and <span class="mono">workflow_run</span> as the audit/lineage trail. For a security company this is a day-one requirement, not an afterthought.</p>
+    </div>
   </div>
 </section>
 
