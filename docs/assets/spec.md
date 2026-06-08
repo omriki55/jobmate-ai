@@ -501,23 +501,3 @@ governed accordingly:
 
 This is out of scope for a 4–5 hour build, but for Gambit specifically it would
 be a day-one requirement, not an afterthought.
-
----
-
-## 6. Why this should score 100 (self-assessment vs the rubric)
-
-- **Specificity:** every step names the node, the exact trigger event, the data
-  in/out, and a failure path.
-- **Judgment:** dedup across Gong+Grain, fail-closed exec routing, conservative
-  SF writes (no auto stage changes), human-in-the-loop on ambiguity.
-- **Closes the loop on quality:** the eval sampler + confidence thresholds
-  directly answer "confirm the output is actually good."
-- **Depth over breadth:** goes deep on the three genuinely hard parts (dedup,
-  matching, restricted routing) and on a storage layer that actually answers the
-  retro questions.
-- **Production-grade, not demo-grade:** §3.10 gives a node-by-node contract
-  (event · data in/out · failure) and §3.11 hardens the six edges that separate
-  a working demo from a trusted system — atomic race-safe dedup, a human gate
-  that can't lose calls, long-transcript map-reduce, a quality signal that
-  doesn't trust the model's self-rating, and an honestly-named exec-exposure
-  limit that automation alone can't close.
