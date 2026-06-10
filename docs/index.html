@@ -236,7 +236,7 @@
       <p class="lead">Two webhook front doors (Gong + Grain) converge into one normalized pipeline. Built in <b>n8n</b> — the only in-scope tool with webhooks, branching, a wait-for-human node, raw HTTP for Gong/Grain, native Salesforce/Slack/BigQuery nodes, and a global error workflow, all self-hostable for exec-call privacy.</p>
     </div>
     <div class="diagram reveal" style="margin-top:30px">
-      <img src="assets/flow.svg" alt="Post-call workflow flow diagram" />
+      <img src="assets/flow.png" alt="Post-call workflow flow diagram" />
       <div class="diagcap">blue: triggers · indigo: process · yellow: decisions · purple: AI · cyan: Salesforce · red: restricted/security · orange: human-in-the-loop · green: outputs · slate: storage</div>
     </div>
   </div>
@@ -359,6 +359,7 @@
           <li><b>call_objections</b><span class="tag fact">FACT</span><br>call_id, category (enum), quote, confidence</li>
           <li><b>call_competitors</b><span class="tag fact">FACT</span><br>call_id, competitor_name, context, sentiment</li>
           <li><b>call_action_items</b><span class="tag fact">FACT</span><br>call_id, owner_team, text, status</li>
+        <li><b>call_topics</b><span class="tag fact">FACT</span><br>call_id, theme (Product's taxonomy)</li>
           <li><b>dim_account / contact / opportunity / rep</b><span class="tag dim">DIM</span><br>mirrored from Salesforce IDs</li>
           <li><b>workflow_run</b><span class="tag ops">OPS</span><br>run_id, call_id, status, failed_node, ai_model, token_cost</li>
           <li><b>ai_quality</b><span class="tag ops">OPS</span><br>run_id, reviewer, thumb, notes — the eval loop</li>
